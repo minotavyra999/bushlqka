@@ -207,3 +207,4 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
 
     Bushlyak_Booking_Plugin::init();
 }
+
