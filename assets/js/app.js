@@ -1,115 +1,156 @@
 document.addEventListener("DOMContentLoaded", function () {
+    const bookingForm = document.getElementById("bush-booking-form");
+    const priceBox = document.getElementById("bush-price");
+    const sectorButtons = document.querySelectorAll(".bush-sector");
+    const payMethodSelect = document.getElementById("bush-paymethod");
 
-    // === Flatpickr ===
-    const dateInput = document.querySelector(".bush-date-range");
-    if (dateInput) {
-        flatpickr(dateInput, {
+    let selectedSector = null;
+    let startDate = null;
+    let endDate = null;
+
+    /** -------------------------
+     *  ИНИЦИАЛИЗАЦИЯ НА КАЛЕНДАРА
+     * ------------------------- */
+    const calendarInput = document.querySelector(".bush-date-range");
+    if (calendarInput) {
+        flatpickr(calendarInput, {
             mode: "range",
-            minDate: "today",
             dateFormat: "Y-m-d",
+            minDate: "today",
             locale: {
-                firstDayOfWeek: 1, // понеделник
-                weekdays: {
-                    shorthand: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-                    longhand: [
-                        "Понеделник", "Вторник", "Сряда",
-                        "Четвъртък", "Петък", "Събота", "Неделя"
-                    ],
-                },
-                months: {
-                    longhand: [
-                        "Януари", "Февруари", "Март", "Април", "Май", "Юни",
-                        "Юли", "Август", "Септември", "Октомври", "Ноември", "Декември"
-                    ]
-                }
+                firstDayOfWeek: 1 // понеделник
             },
-            inline: true, // винаги отворен
-            onChange: function () {
-                calculatePrice();
+            onChange: function (selectedDates) {
+                if (selectedDates.length === 2) {
+                    startDate = selectedDates[0].toISOString().split("T")[0];
+                    endDate = selectedDates[1].toISOString().split("T")[0];
+                    updatePrice();
+                }
             }
         });
     }
 
-    // === Сектори ===
-    const sectorButtons = document.querySelectorAll(".bush-sector");
-    let selectedSector = null;
-
+    /** -------------------------
+     *  СЕКТОРИ
+     * ------------------------- */
     sectorButtons.forEach(btn => {
         btn.addEventListener("click", function () {
-            if (btn.classList.contains("unavailable")) return;
-
             sectorButtons.forEach(b => b.classList.remove("selected"));
-            btn.classList.add("selected");
-            selectedSector = btn.dataset.sector;
-            calculatePrice();
+            this.classList.add("selected");
+            selectedSector = this.dataset.sector;
+            updatePrice();
         });
     });
 
-    // === Цена ===
-    const anglersInput = document.querySelector("#bush-anglers");
-    const hasCardCheckbox = document.querySelector("#bush-second-card");
-    const priceBox = document.querySelector("#bush-total-price");
+    /** -------------------------
+     *  ЗАРЕЖДАНЕ НА МЕТОДИ ЗА ПЛАЩАНЕ
+     * ------------------------- */
+    async function loadPayMethods() {
+        if (!payMethodSelect) return;
 
-    if (anglersInput) anglersInput.addEventListener("change", calculatePrice);
-    if (hasCardCheckbox) hasCardCheckbox.addEventListener("change", calculatePrice);
+        try {
+            const response = await fetch("/wp-json/bush/v1/paymethods");
+            const methods = await response.json();
 
-    function calculatePrice() {
-        if (!dateInput || !selectedSector) return;
+            payMethodSelect.innerHTML = "<option value=''>-- изберете --</option>";
 
-        const dates = dateInput.value.split(" to ");
-        if (dates.length < 1) return;
-
-        const start = dates[0];
-        const end = dates[1] || dates[0];
-
-        const anglers = parseInt(anglersInput.value || 1);
-        const secondHasCard = hasCardCheckbox.checked ? 1 : 0;
-
-        fetch(`/wp-json/bush/v1/pricing`)
-            .then(r => r.json())
-            .then(prices => {
-                const s = new Date(start);
-                const e = new Date(end);
-                const diffDays = Math.max(1, Math.ceil((e - s) / (1000 * 60 * 60 * 24)));
-
-                let total = 0;
-                if (anglers === 1) {
-                    total = prices.base * diffDays;
-                } else if (anglers === 2 && secondHasCard) {
-                    total = (prices.base + prices.second_with_card) * diffDays;
-                } else {
-                    total = (prices.base + prices.second) * diffDays;
-                }
-
-                priceBox.innerHTML = `Цена: <strong>${total.toFixed(2)} лв.</strong>`;
+            methods.forEach(method => {
+                const opt = document.createElement("option");
+                opt.value = method.method_name;
+                opt.textContent = method.method_name + " – " + (method.method_note || "");
+                payMethodSelect.appendChild(opt);
             });
+        } catch (err) {
+            console.error("Грешка при зареждане на методи за плащане:", err);
+        }
+    }
+    loadPayMethods();
+
+    /** -------------------------
+     *  ОБНОВЯВАНЕ НА ЦЕНАТА
+     * ------------------------- */
+    async function updatePrice() {
+        if (!startDate || !endDate || !selectedSector) return;
+
+        const anglers = document.getElementById("bush-anglers")?.value || 1;
+        const secondHasCard = document.getElementById("bush-second-card")?.checked ? 1 : 0;
+
+        try {
+            const response = await fetch("/wp-json/bush/v1/pricing");
+            const prices = await response.json();
+
+            const s = new Date(startDate);
+            const e = new Date(endDate);
+            const days = Math.max(1, Math.ceil((e - s) / (1000 * 60 * 60 * 24)));
+
+            let total = 0;
+            if (anglers == 1) {
+                total = prices.base * days;
+            } else if (anglers == 2 && secondHasCard) {
+                total = (prices.base + prices.second_with_card) * days;
+            } else {
+                total = (prices.base + prices.second) * days;
+            }
+
+            if (priceBox) {
+                priceBox.textContent = "Цена: " + total.toFixed(2) + " лв.";
+            }
+        } catch (err) {
+            console.error("Грешка при калкулация на цена:", err);
+        }
     }
 
-    // === Изпращане на резервация ===
-    const bookingForm = document.querySelector("#bush-booking-form");
+    /** -------------------------
+     *  СМЯНА НА АНГЛЕРИ
+     * ------------------------- */
+    const anglersSelect = document.getElementById("bush-anglers");
+    if (anglersSelect) {
+        anglersSelect.addEventListener("change", updatePrice);
+    }
+    const secondCardCheckbox = document.getElementById("bush-second-card");
+    if (secondCardCheckbox) {
+        secondCardCheckbox.addEventListener("change", updatePrice);
+    }
+
+    /** -------------------------
+     *  СУБМИТ НА ФОРМАТА
+     * ------------------------- */
     if (bookingForm) {
-        bookingForm.addEventListener("submit", function (e) {
+        bookingForm.addEventListener("submit", async function (e) {
             e.preventDefault();
 
-            const formData = new FormData(bookingForm);
-            formData.append("sector", selectedSector);
+            const formData = {
+                daterange: calendarInput.value,
+                sector: selectedSector,
+                anglers: anglersSelect?.value || 1,
+                secondHasCard: secondCardCheckbox?.checked ? 1 : 0,
+                firstName: document.getElementById("bush-first")?.value || "",
+                lastName: document.getElementById("bush-last")?.value || "",
+                email: document.getElementById("bush-email")?.value || "",
+                phone: document.getElementById("bush-phone")?.value || "",
+                notes: document.getElementById("bush-notes")?.value || "",
+                payMethod: payMethodSelect?.value || ""
+            };
 
-            fetch("/wp-json/bush/v1/bookings", {
-                method: "POST",
-                body: formData
-            })
-                .then(r => r.json())
-                .then(res => {
-                    if (res.id) {
-                        alert("✅ Резервацията е изпратена успешно!");
-                        window.location.reload();
-                    } else {
-                        alert("❌ Възникна грешка: " + (res.message || "Опитайте отново."));
-                    }
-                })
-                .catch(() => {
-                    alert("❌ Грешка при връзка със сървъра.");
+            try {
+                const response = await fetch("/wp-json/bush/v1/bookings", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(formData)
                 });
+
+                const result = await response.json();
+
+                if (result.id) {
+                    alert("✅ Резервацията е успешно създадена! Номер: " + result.id);
+                    bookingForm.reset();
+                } else {
+                    alert("❌ Грешка: " + (result.message || "Опитайте отново."));
+                }
+            } catch (err) {
+                alert("❌ Грешка при изпращане на резервацията!");
+                console.error(err);
+            }
         });
     }
 });
