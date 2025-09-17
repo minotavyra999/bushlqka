@@ -47,10 +47,23 @@ class Bushlyak_Booking_REST {
     public static function create_booking( $request ) {
         global $wpdb;
 
+        $start   = sanitize_text_field( $request['start'] );
+        $end     = sanitize_text_field( $request['end'] );
+        $sector  = intval( $request['sector'] );
+
+        // ✅ Проверка за конфликт със съществуваща одобрена резервация
+        if ( Bushlyak_Booking_DB::has_conflict( $start, $end, $sector ) ) {
+            return new WP_Error(
+                'conflict',
+                __( 'Секторът вече е зает за избрания период.', 'bushlyaka' ),
+                [ 'status' => 409 ]
+            );
+        }
+
         $data = [
-            'start'         => sanitize_text_field( $request['start'] ),
-            'end'           => sanitize_text_field( $request['end'] ),
-            'sector'        => intval( $request['sector'] ),
+            'start'         => $start,
+            'end'           => $end,
+            'sector'        => $sector,
             'anglers'       => intval( $request['anglers'] ),
             'secondHasCard' => ! empty($request['secondHasCard']) ? 1 : 0,
             'pay_method'    => intval( $request['payMethod'] ),
