@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Bushlyak Booking
  * Description: Система за резервации на сектори (риболов).
- * Version: 1.5.0
+ * Version: 1.6.0
  * Author: minotavyra
  */
 
@@ -85,8 +85,8 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
             wp_enqueue_style( 'flatpickr', 'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css', [], '4.6.13' );
             wp_enqueue_script( 'flatpickr', 'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.js', [], '4.6.13', true );
 
-            wp_enqueue_style( 'bushlyak-booking', $url . 'assets/css/styles.css', [], '1.5' );
-            wp_enqueue_script( 'bushlyak-booking', $url . 'assets/js/app.js', [ 'jquery' ], '1.5', true );
+            wp_enqueue_style( 'bushlyak-booking', $url . 'assets/css/styles.css', [], '1.6' );
+            wp_enqueue_script( 'bushlyak-booking', $url . 'assets/js/app.js', [ 'jquery' ], '1.6', true );
 
             wp_localize_script( 'bushlyak-booking', 'bushlyaka', [
                 'restUrl'     => esc_url_raw( rest_url( 'bush/v1/' ) ),
@@ -125,6 +125,7 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
                                 </div>
                             <?php endforeach; ?>
                         </div>
+                        <input type="hidden" name="sector" id="bush-sector-input" value="">
                     </div>
 
                     <div class="bush-field">
@@ -185,7 +186,6 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
                 $b->end
             );
 
-            // метод на плащане
             $pay = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_paymethods WHERE id=".intval($b->pay_method));
             $pay_display = $pay ? $pay->name . ' – ' . $pay->instructions : '—';
 
@@ -218,7 +218,6 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
                 $b->end
             );
 
-            // метод на плащане
             $pay = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_paymethods WHERE id=".intval($b->pay_method));
             $pay_display = $pay ? $pay->name . ' – ' . $pay->instructions : '—';
 
