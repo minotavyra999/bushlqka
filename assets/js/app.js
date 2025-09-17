@@ -12,6 +12,21 @@ jQuery(document).ready(function($) {
         }
     });
 
+    // Зареждане на методите за плащане
+    $.get(bushlyaka.restUrl + 'paymethods', {}, function(methods) {
+        let $pay = $("#payMethod");
+        $pay.empty().append('<option value="">-- Изберете метод --</option>');
+        methods.forEach(m => {
+            $pay.append(`<option value="${m.id}" data-desc="${m.instructions}">${m.name}</option>`);
+        });
+    });
+
+    // Показване на описание при избор
+    $("#payMethod").on("change", function() {
+        let desc = $(this).find(":selected").data("desc") || "";
+        $("#payDescription").text(desc);
+    });
+
     function fetchAvailableSectors(startDate, endDate) {
         let start = startDate.toISOString().split('T')[0];
         let end   = endDate.toISOString().split('T')[0];
@@ -34,7 +49,6 @@ jQuery(document).ready(function($) {
         let e = new Date(end);
         let diff = Math.ceil((e - s) / (1000 * 60 * 60 * 24));
 
-        // Ако стартира в петък → минимум 2 дни (петък–неделя)
         if (s.getDay() === 5 && diff < 2) {
             diff = 2;
         }
