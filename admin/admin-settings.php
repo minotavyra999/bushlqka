@@ -1,38 +1,47 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-echo '<div class="wrap"><h1>' . __( 'Настройки', 'bushlyaka' ) . '</h1>';
-
-/** Запазване на настройки */
-if ( isset( $_POST['bush_save_settings'] ) && check_admin_referer( 'bush_settings_action', 'bush_settings_nonce' ) ) {
-    update_option( 'bush_notify_emails', sanitize_text_field( $_POST['notify_emails'] ) );
-    update_option( 'bush_redirect_url', esc_url_raw( $_POST['redirect_url'] ) );
-    echo '<div class="updated"><p>Настройките са запазени успешно.</p></div>';
+// Проверка на права
+if ( ! current_user_can('manage_options') ) {
+    wp_die( __( 'Нямате права да достъпите тази страница.' ) );
 }
 
-/** Текущи стойности */
-$notify_emails = get_option( 'bush_notify_emails', get_option( 'admin_email' ) );
-$redirect_url  = get_option( 'bush_redirect_url', site_url( '/thanks' ) );
+// Запис на настройки
+if ( isset($_POST['save_settings']) ) {
+    check_admin_referer('bushlyaka_settings_action');
+
+    update_option('bushlyaka_booking_email', sanitize_email($_POST['booking_email']));
+    update_option('bushlyaka_booking_redirect', sanitize_text_field($_POST['booking_redirect']));
+
+    echo '<div class="updated notice"><p>Настройките са запазени.</p></div>';
+}
+
+// Вземаме текущи стойности
+$email    = get_option('bushlyaka_booking_email', get_option('admin_email'));
+$redirect = get_option('bushlyaka_booking_redirect', '/booking-summary');
 ?>
 
-<form method="post">
-    <?php wp_nonce_field( 'bush_settings_action', 'bush_settings_nonce' ); ?>
-    <table class="form-table">
-        <tr>
-            <th><label for="notify_emails">Имейли за известия</label></th>
-            <td>
-                <input type="text" name="notify_emails" value="<?php echo esc_attr( $notify_emails ); ?>" class="regular-text">
-                <p class="description">Въведете един или няколко имейла, разделени със запетая, на които да се изпращат известия за нови резервации.</p>
-            </td>
-        </tr>
-        <tr>
-            <th><label for="redirect_url">Redirect URL</label></th>
-            <td>
-                <input type="text" name="redirect_url" value="<?php echo esc_attr( $redirect_url ); ?>" class="regular-text">
-                <p class="description">Адресът, към който клиентите ще бъдат пренасочени след успешна резервация (например страница „Благодарим“).</p>
-            </td>
-        </tr>
-    </table>
-    <p><input type="submit" name="bush_save_settings" class="button-primary" value="Запази"></p>
-</form>
+<div class="wrap">
+    <h1>Настройки</h1>
+
+    <form method="post">
+        <?php wp_nonce_field('bushlyaka_settings_action'); ?>
+        <table class="form-table">
+            <tr>
+                <th><label for="booking_email">Имейл за уведомления</label></th>
+                <td>
+                    <input type="email" name="booking_email" value="<?php echo esc_attr($email); ?>" required>
+                    <p class="description">На този имейл ще получавате известия за нови резервации.</p>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="booking_redirect">Страница за резюме</label></th>
+                <td>
+                    <input type="text" name="booking_redirect" value="<?php echo esc_attr($redirect); ?>" required>
+                    <p class="description">URL или slug на страницата, където е сложен шорткода <code>[bushlyaka_booking_summary]</code>.</p>
+                </td>
+            </tr>
+        </table>
+        <p><input type="submit" name="save_settings" class="button button-primary" value="Запази"></p>
+    </form>
 </div>
