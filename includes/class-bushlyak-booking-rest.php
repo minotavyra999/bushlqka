@@ -47,9 +47,21 @@ class Bushlyak_Booking_REST {
     public static function create_booking( $request ) {
         global $wpdb;
 
-        $start   = sanitize_text_field( $request['start'] );
-        $end     = sanitize_text_field( $request['end'] );
-        $sector  = intval( $request['sector'] );
+        // ✅ Разделяме daterange на start и end
+        $range = sanitize_text_field( $request['daterange'] ?? '' );
+        $dates = explode(" to ", $range);
+        $start = !empty($dates[0]) ? $dates[0] : null;
+        $end   = !empty($dates[1]) ? $dates[1] : null;
+
+        if ( ! $start || ! $end ) {
+            return new WP_Error(
+                'invalid_dates',
+                __( 'Невалиден период. Моля, изберете начална и крайна дата.', 'bushlyaka' ),
+                [ 'status' => 400 ]
+            );
+        }
+
+        $sector = intval( $request['sector'] );
 
         // ✅ Проверка за конфликт със съществуваща одобрена резервация
         if ( Bushlyak_Booking_DB::has_conflict( $start, $end, $sector ) ) {
