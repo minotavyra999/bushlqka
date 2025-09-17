@@ -1,7 +1,10 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-/** @var array $booking */
+/**
+ * Шаблон за имейл потвърждение на резервация
+ * Очаква да получи $booking (масив с данни за резервацията)
+ */
 ?>
 
 <h2>Потвърждение на резервация</h2>
@@ -13,11 +16,15 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 <p><strong>Период:</strong> <?php echo esc_html($booking['start']); ?> до <?php echo esc_html($booking['end']); ?></p>
 <p><strong>Сектор:</strong> <?php echo intval($booking['sector']); ?></p>
 <p><strong>Брой рибари:</strong> <?php echo intval($booking['anglers']); ?></p>
+
 <?php if (!empty($booking['secondHasCard'])): ?>
     <p><strong>Втори рибар:</strong> С карта</p>
+<?php else: ?>
+    <p><strong>Втори рибар:</strong> Без карта</p>
 <?php endif; ?>
 
-<p><strong>Метод на плащане:</strong> <?php echo esc_html($booking['payName']); ?></p>
+<p><strong>Метод на плащане:</strong> <?php echo !empty($booking['payName']) ? esc_html($booking['payName']) : '—'; ?></p>
+
 <?php if (!empty($booking['payInstructions'])): ?>
     <p><strong>Инструкции за плащане:</strong><br>
     <?php echo nl2br(esc_html($booking['payInstructions'])); ?></p>
@@ -27,4 +34,5 @@ if ( ! defined( 'ABSPATH' ) ) exit;
     <p><strong>Бележки:</strong><br><?php echo nl2br(esc_html($booking['notes'])); ?></p>
 <?php endif; ?>
 
-<p><em>Благодарим ви за доверието!</em></p>
+<hr>
+<p><em>Благодарим ви за доверието! Очакваме ви на езерото.</em></p>
