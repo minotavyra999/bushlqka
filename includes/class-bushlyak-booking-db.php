@@ -5,7 +5,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Bushlyak_Booking_DB {
 
-    /** Create database tables */
+    /** Създаване на таблици */
     public static function create_tables() {
         global $wpdb;
         $charset_collate = $wpdb->get_charset_collate();
@@ -14,7 +14,7 @@ class Bushlyak_Booking_DB {
 
         $tables = [];
 
-        // Bookings
+        // Резервации
         $tables[] = "CREATE TABLE {$wpdb->prefix}bush_bookings (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             start DATETIME NOT NULL,
@@ -35,7 +35,7 @@ class Bushlyak_Booking_DB {
             KEY idx_sector (sector)
         ) $charset_collate;";
 
-        // Prices
+        // Цени
         $tables[] = "CREATE TABLE {$wpdb->prefix}bush_prices (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             valid_from DATE NOT NULL,
@@ -45,7 +45,7 @@ class Bushlyak_Booking_DB {
             PRIMARY KEY (id)
         ) $charset_collate;";
 
-        // Payments
+        // Плащания
         $tables[] = "CREATE TABLE {$wpdb->prefix}bush_payments (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             booking_id BIGINT UNSIGNED NOT NULL,
@@ -66,7 +66,7 @@ class Bushlyak_Booking_DB {
             PRIMARY KEY (id)
         ) $charset_collate;";
 
-        // Paymethods
+        // Методи за плащане
         $tables[] = "CREATE TABLE {$wpdb->prefix}bush_paymethods (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             name VARCHAR(100) NOT NULL,
@@ -79,7 +79,7 @@ class Bushlyak_Booking_DB {
         }
     }
 
-    /** Insert booking */
+    /** Създаване на резервация */
     public static function create_booking( $data ) {
         global $wpdb;
 
@@ -87,15 +87,14 @@ class Bushlyak_Booking_DB {
         $end    = sanitize_text_field( $data['end'] ?? '' );
         $sector = sanitize_text_field( $data['sector'] ?? '' );
 
-        // Validate dates
         if ( empty( $start ) || empty( $end ) ) {
             return false;
         }
 
-        // Check availability again (safety net)
+        // Проверка дали секторът е свободен
         $conflicts = self::find_unavailable_sectors( $start, $end );
         if ( in_array( $sector, $conflicts, true ) ) {
-            return false; // Sector already taken
+            return false;
         }
 
         $inserted = $wpdb->insert(
@@ -120,7 +119,7 @@ class Bushlyak_Booking_DB {
         return $inserted ? $wpdb->insert_id : false;
     }
 
-    /** Update booking status */
+    /** Смяна на статус */
     public static function update_booking_status( $id, $status ) {
         global $wpdb;
         return $wpdb->update(
@@ -132,7 +131,7 @@ class Bushlyak_Booking_DB {
         );
     }
 
-    /** Delete booking */
+    /** Изтриване на резервация */
     public static function delete_booking( $id ) {
         global $wpdb;
         $id = intval( $id );
@@ -140,7 +139,7 @@ class Bushlyak_Booking_DB {
         return $wpdb->delete( "{$wpdb->prefix}bush_bookings", [ 'id' => $id ], [ '%d' ] );
     }
 
-    /** Add payment */
+    /** Добавяне на плащане */
     public static function add_payment( $booking_id, $amount, $method, $reference = '' ) {
         global $wpdb;
         $inserted = $wpdb->insert(
@@ -155,14 +154,13 @@ class Bushlyak_Booking_DB {
         );
 
         if ( $inserted ) {
-            // Автоматично одобрение при плащане
             self::update_booking_status( $booking_id, 'paid' );
             return $wpdb->insert_id;
         }
         return false;
     }
 
-    /** Find unavailable sectors */
+    /** Търсене на заети сектори */
     public static function find_unavailable_sectors( $start, $end ) {
         global $wpdb;
         $sql = $wpdb->prepare(
@@ -176,6 +174,33 @@ class Bushlyak_Booking_DB {
         return $wpdb->get_col( $sql );
     }
 
-    // --- Останалите методи (get_prices, list_bookings, list_blackouts и т.н.)
-    // може да останат почти същите, но добави sanitize и проверки както горните.
+    /** Лист на резервации */
+    public static function list_bookings( $limit = 50 ) {
+        global $wpdb;
+        return $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}bush_bookings ORDER BY created_at DESC LIMIT %d",
+                $limit
+            )
+        );
+    }
+
+    /** Взимане на цени */
+    public static function get_prices() {
+        global $wpdb;
+        $sql = "SELECT * FROM {$wpdb->prefix}bush_prices ORDER BY valid_from DESC LIMIT 1";
+        return $wpdb->get_row( $sql );
+    }
+
+    /** Blackouts */
+    public static function list_blackouts() {
+        global $wpdb;
+        return $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}bush_blackouts ORDER BY start DESC" );
+    }
+
+    /** Методи за плащане */
+    public static function list_paymethods() {
+        global $wpdb;
+        return $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}bush_paymethods ORDER BY id ASC" );
+    }
 }
