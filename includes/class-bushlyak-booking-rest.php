@@ -31,20 +31,9 @@ if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
                 'callback' => [ __CLASS__, 'post_booking' ],
                 'permission_callback' => [ __CLASS__, 'verify_nonce' ],
             ]);
-
-            register_rest_route( $namespace, '/blackouts', [
-                'methods'  => 'GET',
-                'callback' => [ __CLASS__, 'get_blackouts' ],
-                'permission_callback' => '__return_true',
-            ]);
-
-            register_rest_route( $namespace, '/payments/methods', [
-                'methods'  => 'GET',
-                'callback' => [ __CLASS__, 'get_paymethods' ],
-                'permission_callback' => '__return_true',
-            ]);
         }
 
+        /** Nonce проверка */
         public static function verify_nonce( $request ) {
             $nonce = $request->get_header( 'X-WP-Nonce' );
             if ( ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
@@ -53,12 +42,48 @@ if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
             return true;
         }
 
-        /** API: цени */
-        public static function get_pricing() {
-            return Bushlyak_Booking_DB::get_prices();
+        /** Калкулация на цената */
+        public static function calculate_price( $anglers = 1, $secondHasCard = false ) {
+            $prices = Bushlyak_Booking_DB::get_prices();
+            if ( ! $prices ) {
+                return 0;
+            }
+
+            if ( $anglers == 1 ) {
+                return floatval( $prices->base );
+            }
+
+            if ( $anglers == 2 && $secondHasCard ) {
+                return floatval( $prices->base ) + floatval( $prices->second_with_card );
+            }
+
+            if ( $anglers == 2 ) {
+                return floatval( $prices->base ) + floatval( $prices->second );
+            }
+
+            return 0;
         }
 
-        /** API: заетост */
+        /** API: Връща цените */
+        public static function get_pricing() {
+            $prices = Bushlyak_Booking_DB::get_prices();
+            if ( ! $prices ) {
+                return new WP_Error( 'no_prices', 'Няма въведени цени.', [ 'status' => 404 ] );
+            }
+
+            return [
+                'base'             => floatval( $prices->base ),
+                'second'           => floatval( $prices->second ),
+                'second_with_card' => floatval( $prices->second_with_card ),
+                'examples'         => [
+                    '1_angler'        => self::calculate_price(1, false),
+                    '2_anglers'       => self::calculate_price(2, false),
+                    '2_anglers_card'  => self::calculate_price(2, true),
+                ]
+            ];
+        }
+
+        /** API: Проверка на заетост */
         public static function post_availability( $request ) {
             $params = $request->get_json_params();
             $start = sanitize_text_field( $params['start'] ?? '' );
@@ -73,7 +98,7 @@ if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
             ];
         }
 
-        /** API: резервация */
+        /** API: Резервация */
         public static function post_booking( $request ) {
             $params = $request->get_json_params();
 
@@ -87,17 +112,17 @@ if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
                 return new WP_Error( 'db_error', 'Неуспешно създаване на резервация.', [ 'status' => 500 ] );
             }
 
-            return [ 'ok' => true, 'bookingId' => $booking_id ];
-        }
+            // връщаме и цената
+            $price = self::calculate_price(
+                intval($params['anglers'] ?? 1),
+                !empty($params['secondHasCard'])
+            );
 
-        /** API: blackouts */
-        public static function get_blackouts() {
-            return Bushlyak_Booking_DB::list_blackouts();
-        }
-
-        /** API: методи за плащане */
-        public static function get_paymethods() {
-            return Bushlyak_Booking_DB::list_paymethods();
+            return [
+                'ok'        => true,
+                'bookingId' => $booking_id,
+                'price'     => $price
+            ];
         }
     }
 }
