@@ -1,230 +1,145 @@
-document.addEventListener("DOMContentLoaded", () => {
-  const form = document.querySelector(".bushlyaka-booking-form");
-  if (!form) return;
+document.addEventListener("DOMContentLoaded", function () {
+    const form = document.querySelector(".bushlyaka-booking-form form");
+    if (!form) return;
 
-  // --- Състояние ---
-  const state = {
-    start: null,
-    end: null,
-    sector: null,
-    anglers: 1,
-    secondHasCard: false,
-    pricing: null,
-    payMethods: [],
-    priceEstimate: 0,
-  };
+    const dateRangeInput = form.querySelector(".bush-date-range");
+    const sectorElements = form.querySelectorAll(".bush-sector");
+    const priceEstimate = form.querySelector(".bush-price-estimate");
+    const globalError = form.querySelector(".bush-error-global");
 
-  // --- Помощни функции ---
-  const showError = (msg) => {
-    const errorBox = form.querySelector(".bush-error-global");
-    if (errorBox) {
-      errorBox.textContent = msg;
-      errorBox.style.display = "block";
-    } else {
-      alert(msg);
-    }
-  };
+    let selectedSector = null;
+    let pricing = null;
 
-  const clearError = () => {
-    const errorBox = form.querySelector(".bush-error-global");
-    if (errorBox) errorBox.style.display = "none";
-  };
-
-  const validateEmail = (email) =>
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-  const validatePhone = (phone) =>
-    /^[0-9+\-\s]{6,20}$/.test(phone);
-
-  const updatePrice = () => {
-    if (!state.pricing) return;
-    let price = state.pricing.base;
-    if (state.anglers > 1) {
-      price += state.secondHasCard
-        ? state.pricing.second_with_card
-        : state.pricing.second;
-    }
-    state.priceEstimate = price;
-    form.querySelector(".bush-price-estimate").textContent =
-      price + " лв.";
-  };
-
-  const toggleLoading = (loading) => {
-    const btn = form.querySelector("button[type=submit]");
-    if (!btn) return;
-    btn.disabled = loading;
-    btn.textContent = loading ? "Изпращане..." : "Изпрати резервация";
-  };
-
-  // --- Fetch данни ---
-  const apiFetch = async (endpoint, options = {}) => {
-    try {
-      const res = await fetch(
-        bushlyaka.restUrl + endpoint,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "X-WP-Nonce": bushlyaka.nonce,
-          },
-          ...options,
+    /** Показване на грешки */
+    function showError(message) {
+        if (globalError) {
+            globalError.style.display = "block";
+            globalError.textContent = message;
+        } else {
+            alert(message);
         }
-      );
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || "Грешка при заявката");
-      }
-      return res.json();
-    } catch (err) {
-      showError(err.message);
-      throw err;
     }
-  };
 
-  // --- Календар ---
-  flatpickr(form.querySelector(".bush-date-range"), {
-    mode: "range",
-    dateFormat: "Y-m-d",
-    minDate: "today",
-    inline: true,
-    showMonths: window.innerWidth < 640 ? 1 : 2,
-    onChange: async (selectedDates) => {
-      if (selectedDates.length === 2) {
-        clearError();
-        state.start = selectedDates[0].toISOString();
-        state.end = selectedDates[1].toISOString();
+    /** Скриване на грешки */
+    function clearError() {
+        if (globalError) {
+            globalError.style.display = "none";
+            globalError.textContent = "";
+        }
+    }
 
-        // Проверка за заети сектори
+    /** Зареждане на цени */
+    async function loadPricing() {
         try {
-          const data = await apiFetch("availability", {
-            method: "POST",
-            body: JSON.stringify({
-              start: state.start,
-              end: state.end,
-            }),
-          });
-          document
-            .querySelectorAll(".bush-sector")
-            .forEach((el) => {
-              const sec = el.dataset.sector;
-              if (data.unavailable.includes(sec)) {
-                el.classList.add("unavailable");
-                el.classList.remove("available", "selected");
-              } else {
-                el.classList.add("available");
-                el.classList.remove("unavailable");
-              }
-            });
+            const res = await fetch(bushlyaka.restUrl + "pricing");
+            pricing = await res.json();
         } catch (err) {
-          // handled by apiFetch
+            console.error("Грешка при зареждане на цени", err);
         }
-      }
-    },
-  });
+    }
 
-  // --- Сектори ---
-  form.querySelectorAll(".bush-sector").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (btn.classList.contains("unavailable")) return;
-      form.querySelectorAll(".bush-sector").forEach((el) =>
-        el.classList.remove("selected")
-      );
-      btn.classList.add("selected");
-      state.sector = btn.dataset.sector;
+    /** Изчисляване на цена */
+    function updatePrice() {
+        if (!pricing) return;
+
+        const anglers = parseInt(form.querySelector("select[name='anglers']").value, 10);
+        const secondHasCard = form.querySelector("input[name='secondHasCard']").checked;
+
+        let total = 0;
+        if (anglers === 1) {
+            total = parseFloat(pricing.base);
+        } else if (anglers === 2) {
+            total = secondHasCard
+                ? parseFloat(pricing.second_with_card)
+                : parseFloat(pricing.second);
+        }
+
+        priceEstimate.textContent = total.toFixed(2) + " лв.";
+    }
+
+    /** Избор на сектор */
+    sectorElements.forEach(el => {
+        el.addEventListener("click", function () {
+            sectorElements.forEach(s => s.classList.remove("selected"));
+            this.classList.add("selected");
+            selectedSector = this.dataset.sector;
+        });
     });
-  });
 
-  // --- Англери ---
-  form
-    .querySelector("[name=anglers]")
-    .addEventListener("change", (e) => {
-      state.anglers = parseInt(e.target.value, 10) || 1;
-      updatePrice();
+    form.querySelector("select[name='anglers']").addEventListener("change", updatePrice);
+    form.querySelector("input[name='secondHasCard']").addEventListener("change", updatePrice);
+
+    /** Валидация на форма */
+    function validateForm(data) {
+        if (!data.start || !data.end) return "Моля изберете дати.";
+        if (!data.sector) return "Моля изберете сектор.";
+        if (!data.client.firstName || !data.client.lastName) return "Въведете име и фамилия.";
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.client.email)) return "Невалиден имейл.";
+        if (!/^[0-9+\-\s]{6,20}$/.test(data.client.phone)) return "Невалиден телефон.";
+        return null;
+    }
+
+    /** Изпращане на резервация */
+    form.addEventListener("submit", async function (e) {
+        e.preventDefault();
+        clearError();
+
+        const [start, end] = (dateRangeInput.value || "").split(" до ");
+
+        const data = {
+            start: start ? start.trim() : "",
+            end: end ? end.trim() : "",
+            sector: selectedSector,
+            anglers: parseInt(form.querySelector("select[name='anglers']").value, 10),
+            client: {
+                firstName: form.querySelector("input[name='firstName']").value.trim(),
+                lastName: form.querySelector("input[name='lastName']").value.trim(),
+                email: form.querySelector("input[name='email']").value.trim(),
+                phone: form.querySelector("input[name='phone']").value.trim(),
+            },
+            notes: form.querySelector("textarea[name='notes']").value.trim(),
+            payMethodId: form.querySelector("select[name='payMethod']").value,
+        };
+
+        const error = validateForm(data);
+        if (error) {
+            showError(error);
+            return;
+        }
+
+        try {
+            const submitBtn = form.querySelector("button[type='submit']");
+            submitBtn.disabled = true;
+            submitBtn.textContent = bushlyaka.messages.loading;
+
+            const res = await fetch(bushlyaka.restUrl + "bookings", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-WP-Nonce": bushlyaka.nonce,
+                },
+                body: JSON.stringify(data),
+            });
+
+            const json = await res.json();
+
+            if (!res.ok || !json.ok) {
+                throw new Error(json.message || bushlyaka.messages.error);
+            }
+
+            alert(bushlyaka.messages.success);
+            window.location.href = bushlyaka.redirectUrl;
+
+        } catch (err) {
+            console.error(err);
+            showError(err.message || bushlyaka.messages.error);
+        } finally {
+            const submitBtn = form.querySelector("button[type='submit']");
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Изпрати резервация";
+        }
     });
 
-  form
-    .querySelector("[name=secondHasCard]")
-    .addEventListener("change", (e) => {
-      state.secondHasCard = e.target.checked;
-      updatePrice();
-    });
-
-  // --- Submit ---
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    clearError();
-
-    // Валидация
-    if (!state.start || !state.end) {
-      showError("Моля изберете дати.");
-      return;
-    }
-    if (!state.sector) {
-      showError("Моля изберете сектор.");
-      return;
-    }
-
-    const firstName = form.querySelector("[name=firstName]").value.trim();
-    const lastName = form.querySelector("[name=lastName]").value.trim();
-    const email = form.querySelector("[name=email]").value.trim();
-    const phone = form.querySelector("[name=phone]").value.trim();
-
-    if (!firstName || !lastName) {
-      showError("Моля въведете име и фамилия.");
-      return;
-    }
-    if (!validateEmail(email)) {
-      showError("Невалиден имейл адрес.");
-      return;
-    }
-    if (!validatePhone(phone)) {
-      showError("Невалиден телефон.");
-      return;
-    }
-
-    // Изпращане
-    toggleLoading(true);
-    try {
-      await apiFetch("bookings", {
-        method: "POST",
-        body: JSON.stringify({
-          start: state.start,
-          end: state.end,
-          sector: state.sector,
-          anglers: state.anglers,
-          secondHasCard: state.secondHasCard,
-          client: { firstName, lastName, email, phone },
-          notes: form.querySelector("[name=notes]").value.trim(),
-          payMethodId: form.querySelector("[name=payMethod]").value,
-        }),
-      });
-
-      form.innerHTML = `<p class="success">Резервацията е изпратена успешно!</p>`;
-      setTimeout(() => {
-        window.location.href = bushlyaka.redirectUrl || "/";
-      }, 2500);
-    } catch (err) {
-      toggleLoading(false);
-    }
-  });
-
-  // --- Зареждане на данни ---
-  (async () => {
-    try {
-      const pricing = await apiFetch("pricing");
-      state.pricing = pricing;
-      updatePrice();
-
-      const payMethods = await apiFetch("payments/methods");
-      state.payMethods = payMethods;
-      const select = form.querySelector("[name=payMethod]");
-      payMethods.forEach((pm) => {
-        const opt = document.createElement("option");
-        opt.value = pm.id;
-        opt.textContent = pm.name;
-        select.appendChild(opt);
-      });
-    } catch (err) {
-      // handled by apiFetch
-    }
-  })();
+    /** Зареждане на начални данни */
+    loadPricing();
 });
