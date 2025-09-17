@@ -3,75 +3,45 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 global $wpdb;
 
-$booking_id = isset($booking_id) ? intval($booking_id) : 0;
-if ( ! $booking_id ) return;
+$booking = $wpdb->get_row( $wpdb->prepare(
+    "SELECT * FROM {$wpdb->prefix}bush_bookings WHERE id=%d",
+    $booking_id
+) );
 
-$b = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_bookings WHERE id = {$booking_id}");
-if ( ! $b ) return;
+if ( ! $booking ) {
+    return;
+}
 
-// Взимаме метод на плащане
-$pay = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_paymethods WHERE id=".intval($b->pay_method));
-$pay_display = $pay ? $pay->name . ' – ' . $pay->instructions : '—';
+// Форматиране на периода (12:00 -> 12:00)
+$start_date = date_i18n( 'd.m.Y', strtotime($booking->start) ) . ' 12:00';
+$end_date   = date_i18n( 'd.m.Y', strtotime($booking->end) )   . ' 12:00';
 
-// Изчисляваме цената
+$sector_name = "Сектор " . esc_html( $booking->sector );
 $price = Bushlyak_Booking_REST::calculate_price(
-    intval($b->anglers),
-    !empty($b->secondHasCard),
-    $b->start,
-    $b->end
+    $booking->anglers,
+    isset($booking->secondHasCard) ? (bool)$booking->secondHasCard : false,
+    $booking->start,
+    $booking->end
 );
 
-$subject = sprintf( __( 'Вашата резервация №%d', 'bushlyaka' ), $b->id );
-
-// HTML съдържание
-$message = '
-<h2 style="color:#0073aa;">Потвърждение за резервация</h2>
-<p>Здравейте, <strong>'.esc_html($b->client_first).' '.esc_html($b->client_last).'</strong>,</p>
-<p>Вашата резервация беше успешно получена. Ето детайлите:</p>
-
-<table style="border-collapse:collapse;width:100%;margin:20px 0;">
-  <tr>
-    <th style="text-align:left;border:1px solid #ccc;padding:8px;">Резервация №</th>
-    <td style="border:1px solid #ccc;padding:8px;">'.$b->id.'</td>
-  </tr>
-  <tr>
-    <th style="text-align:left;border:1px solid #ccc;padding:8px;">Период</th>
-    <td style="border:1px solid #ccc;padding:8px;">'.esc_html($b->start).' – '.esc_html($b->end).'</td>
-  </tr>
-  <tr>
-    <th style="text-align:left;border:1px solid #ccc;padding:8px;">Сектор</th>
-    <td style="border:1px solid #ccc;padding:8px;">Сектор '.esc_html($b->sector).'</td>
-  </tr>
-  <tr>
-    <th style="text-align:left;border:1px solid #ccc;padding:8px;">Брой рибари</th>
-    <td style="border:1px solid #ccc;padding:8px;">'.intval($b->anglers).'</td>
-  </tr>
-  <tr>
-    <th style="text-align:left;border:1px solid #ccc;padding:8px;">Втори с карта</th>
-    <td style="border:1px solid #ccc;padding:8px;">'.(!empty($b->secondHasCard) ? 'Да' : 'Не').'</td>
-  </tr>
-  <tr>
-    <th style="text-align:left;border:1px solid #ccc;padding:8px;">Метод на плащане</th>
-    <td style="border:1px solid #ccc;padding:8px;">'.$pay_display.'</td>
-  </tr>
-  <tr>
-    <th style="text-align:left;border:1px solid #ccc;padding:8px;">Бележки</th>
-    <td style="border:1px solid #ccc;padding:8px;">'.nl2br(esc_html($b->notes)).'</td>
-  </tr>
-  <tr>
-    <th style="text-align:left;border:1px solid #ccc;padding:8px;">Цена</th>
-    <td style="border:1px solid #ccc;padding:8px;">'.number_format($price, 2, '.', ' ').' лв.</td>
-  </tr>
+// Съобщение
+$subject = "Вашата резервация (#{$booking->id}) е получена";
+$message = "
+<p>Здравейте, <strong>{$booking->client_first} {$booking->client_last}</strong>,</p>
+<p>Вашата резервация беше получена успешно. Ето детайлите:</p>
+<table border='1' cellpadding='6' cellspacing='0' style='border-collapse: collapse;'>
+    <tr><th align='left'>Резервация №</th><td>{$booking->id}</td></tr>
+    <tr><th align='left'>Период</th><td>{$start_date} – {$end_date}</td></tr>
+    <tr><th align='left'>Сектор</th><td>{$sector_name}</td></tr>
+    <tr><th align='left'>Брой рибари</th><td>{$booking->anglers}</td></tr>
+    <tr><th align='left'>Втори с карта</th><td>" . (!empty($booking->secondHasCard) ? 'Да' : 'Не') . "</td></tr>
+    <tr><th align='left'>Метод на плащане</th><td>{$booking->pay_method}</td></tr>
+    <tr><th align='left'>Бележки</th><td>{$booking->notes}</td></tr>
+    <tr><th align='left'>Цена</th><td>" . number_format_i18n($price, 2) . " лв.</td></tr>
+    <tr><th align='left'>Статус</th><td>{$booking->status}</td></tr>
 </table>
+<p>Ще получите допълнителен имейл, когато резервацията бъде разгледана от администратор.</p>
+";
 
-<p>Ще получите допълнително известие, когато резервацията бъде одобрена от администратор.</p>
-<p>Благодарим ви, че избрахте <strong>Bushlyak Booking</strong>!</p>
-';
-
-$headers = array('Content-Type: text/html; charset=UTF-8');
-
-// Изпращаме имейл до клиента
-wp_mail( $b->client_email, $subject, $message, $headers );
-
-// Изпращаме и до администратора
-wp_mail( get_option('admin_email'), 'Нова резервация', $message, $headers );
+$headers = ['Content-Type: text/html; charset=UTF-8'];
+wp_mail( $booking->client_email, $subject, $message, $headers );
