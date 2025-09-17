@@ -24,9 +24,7 @@ class Bushlyak_Booking_REST {
         ]);
     }
 
-    /**
-     * Връща цените от таблицата bush_prices
-     */
+    /** Връща цените от таблицата bush_prices */
     public static function get_pricing( $request ) {
         global $wpdb;
         $prices = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_prices LIMIT 1", ARRAY_A);
@@ -41,17 +39,23 @@ class Bushlyak_Booking_REST {
         return $prices;
     }
 
-    /**
-     * Създава резервация в таблицата bush_bookings
-     */
+    /** Създава резервация */
     public static function create_booking( $request ) {
         global $wpdb;
 
-        // ✅ Разделяме daterange на start и end
-        $range = sanitize_text_field( $request['daterange'] ?? '' );
-        $dates = explode(" to ", $range);
-        $start = !empty($dates[0]) ? $dates[0] : null;
-        $end   = !empty($dates[1]) ? $dates[1] : null;
+        // ✅ приемаме или daterange, или отделни start/end
+        $start = '';
+        $end   = '';
+        $range = isset($request['daterange']) ? sanitize_text_field($request['daterange']) : '';
+
+        if ($range) {
+            $parts = explode(' to ', $range);
+            $start = !empty($parts[0]) ? $parts[0] : '';
+            $end   = !empty($parts[1]) ? $parts[1] : $start;
+        } else {
+            $start = sanitize_text_field( $request['start'] ?? '' );
+            $end   = sanitize_text_field( $request['end']   ?? '' );
+        }
 
         if ( ! $start || ! $end ) {
             return new WP_Error(
@@ -63,7 +67,7 @@ class Bushlyak_Booking_REST {
 
         $sector = intval( $request['sector'] );
 
-        // ✅ Проверка за конфликт със съществуваща одобрена резервация
+        // Проверка за конфликт със съществуваща одобрена резервация
         if ( Bushlyak_Booking_DB::has_conflict( $start, $end, $sector ) ) {
             return new WP_Error(
                 'conflict',
@@ -77,24 +81,22 @@ class Bushlyak_Booking_REST {
             'end'           => $end,
             'sector'        => $sector,
             'anglers'       => intval( $request['anglers'] ),
-            'secondHasCard' => ! empty($request['secondHasCard']) ? 1 : 0,
-            'pay_method'    => intval( $request['payMethod'] ),
-            'notes'         => sanitize_textarea_field( $request['notes'] ),
             'client_first'  => sanitize_text_field( $request['firstName'] ),
             'client_last'   => sanitize_text_field( $request['lastName'] ),
             'client_email'  => sanitize_email( $request['email'] ),
             'client_phone'  => sanitize_text_field( $request['phone'] ),
+            'notes'         => sanitize_textarea_field( $request['notes'] ),
             'status'        => 'pending',
+            'pay_method'    => sanitize_text_field( $request['payMethod'] ),
             'created_at'    => current_time('mysql'),
         ];
 
         $inserted = $wpdb->insert( "{$wpdb->prefix}bush_bookings", $data );
 
         if ( ! $inserted ) {
-            // DEBUG LOG
             error_log("Bushlyak Booking DB insert error: " . $wpdb->last_error);
             error_log("Bushlyak Booking DB insert data: " . print_r($data, true));
-            return new WP_Error( 'db_error', 'Грешка при запис в базата', [ 'status' => 500 ] );
+            return new WP_Error( 'db_error', __( 'Грешка при запис в базата.', 'bushlyaka' ), [ 'status' => 500 ] );
         }
 
         $booking_id = $wpdb->insert_id;
@@ -104,13 +106,11 @@ class Bushlyak_Booking_REST {
 
         return [
             'id'      => $booking_id,
-            'message' => 'Резервацията е успешно създадена.',
+            'message' => __( 'Резервацията е успешно създадена.', 'bushlyaka' ),
         ];
     }
 
-    /**
-     * Калкулация на цената
-     */
+    /** Калкулация на цената */
     public static function calculate_price( $anglers, $secondHasCard, $start, $end ) {
         $prices = self::get_pricing(null);
 
