@@ -148,5 +148,52 @@ if ( ! class_exists( 'Bushlyak_Booking_DB' ) ) {
             global $wpdb;
             return $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}bush_paymethods ORDER BY id ASC" );
         }
+
+        /** ✅ Нови методи */
+
+        // Взимане на резервация по ID
+        public static function get_booking( $id ) {
+            global $wpdb;
+            return $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT * FROM {$wpdb->prefix}bush_bookings WHERE id = %d",
+                    intval($id)
+                )
+            );
+        }
+
+        // Проверка за конфликт със съществуваща одобрена резервация
+        public static function has_conflict( $start, $end, $sector, $exclude_id = 0 ) {
+            global $wpdb;
+            $sql = "SELECT 1
+                      FROM {$wpdb->prefix}bush_bookings
+                     WHERE status = 'approved'
+                       AND sector = %s
+                       AND start < %s
+                       AND end   > %s";
+            $params = [ $sector, $end, $start ];
+            if ( $exclude_id ) {
+                $sql .= " AND id <> %d";
+                $params[] = intval($exclude_id);
+            }
+            return (bool) $wpdb->get_var( $wpdb->prepare( $sql, ...$params ) );
+        }
+
+        // Отхвърля всички pending резервации, които се припокриват с одобрена
+        public static function reject_pending_overlaps( $start, $end, $sector, $approved_id ) {
+            global $wpdb;
+            $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$wpdb->prefix}bush_bookings
+                        SET status = 'rejected'
+                      WHERE status = 'pending'
+                        AND sector = %s
+                        AND start < %s
+                        AND end   > %s
+                        AND id <> %d",
+                    $sector, $end, $start, intval($approved_id)
+                )
+            );
+        }
     }
 }
