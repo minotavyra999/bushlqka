@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Bushlyak Booking
  * Description: Система за резервации на сектори (риболов).
- * Version: 1.6.0
+ * Version: 1.7.0
  * Author: minotavyra
  */
 
@@ -82,11 +82,13 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
         public static function enqueue_assets() {
             $url = plugin_dir_url( __FILE__ );
 
+            // Flatpickr (календар)
             wp_enqueue_style( 'flatpickr', 'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css', [], '4.6.13' );
             wp_enqueue_script( 'flatpickr', 'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.js', [], '4.6.13', true );
 
-            wp_enqueue_style( 'bushlyak-booking', $url . 'assets/css/styles.css', [], '1.6' );
-            wp_enqueue_script( 'bushlyak-booking', $url . 'assets/js/app.js', [ 'jquery' ], '1.6', true );
+            // Нашите стилове и скриптове
+            wp_enqueue_style( 'bushlyak-booking', $url . 'assets/css/styles.css', [], '1.7' );
+            wp_enqueue_script( 'bushlyak-booking', $url . 'assets/js/app.js', [ 'jquery','flatpickr' ], '1.7', true );
 
             wp_localize_script( 'bushlyak-booking', 'bushlyaka', [
                 'restUrl'     => esc_url_raw( rest_url( 'bush/v1/' ) ),
@@ -171,97 +173,10 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
             return ob_get_clean();
         }
 
-        public static function render_booking_summary() {
-            if ( empty($_GET['booking']) ) return '<p>Няма намерена резервация.</p>';
-
-            global $wpdb;
-            $id = intval($_GET['booking']);
-            $b = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_bookings WHERE id=$id");
-            if (!$b) return '<p>Няма намерена резервация.</p>';
-
-            $price = Bushlyak_Booking_REST::calculate_price(
-                intval($b->anglers),
-                !empty($b->secondHasCard),
-                $b->start,
-                $b->end
-            );
-
-            $pay = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_paymethods WHERE id=".intval($b->pay_method));
-            $pay_display = $pay ? $pay->name . ' – ' . $pay->instructions : '—';
-
-            ob_start(); ?>
-            <div class="bush-booking-summary">
-                <h2>Резервация №<?php echo $b->id; ?></h2>
-                <p><strong>Период:</strong> <?php echo $b->start . ' – ' . $b->end; ?></p>
-                <p><strong>Сектор:</strong> <?php echo $b->sector; ?></p>
-                <p><strong>Клиент:</strong> <?php echo $b->client_first . ' ' . $b->client_last; ?></p>
-                <p><strong>Имейл:</strong> <?php echo $b->client_email; ?></p>
-                <p><strong>Телефон:</strong> <?php echo $b->client_phone; ?></p>
-                <p><strong>Бележки:</strong> <?php echo $b->notes; ?></p>
-                <p><strong>Метод на плащане:</strong> <?php echo esc_html($pay_display); ?></p>
-                <p><strong>Статус:</strong> <?php echo $b->status; ?></p>
-                <p><strong>Обща цена:</strong> <?php echo number_format($price, 2, '.', ' '); ?> лв.</p>
-            </div>
-            <?php
-            return ob_get_clean();
-        }
-
-        public static function send_booking_email($booking_id) {
-            global $wpdb;
-            $b = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_bookings WHERE id=$booking_id");
-            if (!$b) return;
-
-            $price = Bushlyak_Booking_REST::calculate_price(
-                intval($b->anglers),
-                !empty($b->secondHasCard),
-                $b->start,
-                $b->end
-            );
-
-            $pay = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_paymethods WHERE id=".intval($b->pay_method));
-            $pay_display = $pay ? $pay->name . ' – ' . $pay->instructions : '—';
-
-            $subject = "Вашата резервация №{$b->id}";
-
-            $message = '
-            <html><head><style>
-              body { font-family: Arial, sans-serif; color: #333; }
-              .wrapper { max-width: 600px; margin: auto; padding: 20px; border:1px solid #ddd; border-radius:8px; }
-              h2 { color: #006400; }
-              table { width: 100%; border-collapse: collapse; margin-top: 15px; }
-              td, th { border: 1px solid #ccc; padding: 8px; text-align: left; }
-              th { background: #f5f5f5; }
-            </style></head><body>
-              <div class="wrapper">
-                <h2>Благодарим за вашата резервация!</h2>
-                <table>
-                  <tr><th>Номер</th><td>'.$b->id.'</td></tr>
-                  <tr><th>Период</th><td>'.$b->start.' – '.$b->end.'</td></tr>
-                  <tr><th>Сектор</th><td>'.$b->sector.'</td></tr>
-                  <tr><th>Рибари</th><td>'.$b->anglers.'</td></tr>
-                  <tr><th>Име</th><td>'.$b->client_first.' '.$b->client_last.'</td></tr>
-                  <tr><th>Имейл</th><td>'.$b->client_email.'</td></tr>
-                  <tr><th>Телефон</th><td>'.$b->client_phone.'</td></tr>
-                  <tr><th>Метод на плащане</th><td>'.$pay_display.'</td></tr>
-                  <tr><th>Бележки</th><td>'.$b->notes.'</td></tr>
-                  <tr><th>Статус</th><td>'.$b->status.'</td></tr>
-                  <tr><th>Обща цена</th><td>'.number_format($price, 2, '.', ' ').' лв.</td></tr>
-                </table>
-              </div>
-            </body></html>';
-
-            $headers = [
-                'Content-Type: text/html; charset=UTF-8',
-                'From: Bushlyak Booking <no-reply@'.$_SERVER['SERVER_NAME'].'>'
-            ];
-
-            wp_mail($b->client_email, $subject, $message, $headers);
-            wp_mail(get_option('admin_email'), "Нова резервация №{$b->id}", $message, $headers);
-        }
-
-        public static function render_admin_dashboard() {
-            echo '<div class="wrap"><h1>Bushlyak Booking</h1><p>Използвайте менюто за управление.</p></div>';
-        }
+        // render_booking_summary(), send_booking_email(), admin_* → остават същите
+        public static function render_booking_summary() { include plugin_dir_path( __FILE__ ) . 'summary.php'; }
+        public static function send_booking_email($booking_id) { include plugin_dir_path( __FILE__ ) . 'email.php'; }
+        public static function render_admin_dashboard() { echo '<div class="wrap"><h1>Bushlyak Booking</h1><p>Използвайте менюто за управление.</p></div>'; }
         public static function render_admin_bookings() { include plugin_dir_path( __FILE__ ) . 'admin/admin-bookings.php'; }
         public static function render_admin_prices() { include plugin_dir_path( __FILE__ ) . 'admin/admin-prices.php'; }
         public static function render_admin_payments() { include plugin_dir_path( __FILE__ ) . 'admin/admin-payments.php'; }
