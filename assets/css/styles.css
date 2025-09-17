@@ -65,21 +65,6 @@ button[type="submit"]:hover {
     background: #005177;
 }
 
-/* === ✅ Fix за календара (frontend shortcode) === */
-.flatpickr-calendar {
-    width: auto !important;      /* позволява естествена ширина */
-    max-width: none !important;  /* премахва ограничението */
-    z-index: 10000 !important;   /* винаги най-отгоре */
-    margin: 0 auto;              /* центриране */
-}
-
-.flatpickr-days {
-    width: auto !important;
-}
-
-/* Когато е в контейнер на формата */
-.bushlyaka-booking-form .flatpickr-calendar {
-    position: absolute !important; /* да излиза над формата */
 }
 /* Календарът да следва широчината на input-а и да запълва контейнера */
 .bush-date-range {
