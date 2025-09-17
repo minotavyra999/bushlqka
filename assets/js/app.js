@@ -1,302 +1,230 @@
-(function(){
-  if (!window.BushCfg) return;
-  const el = document.getElementById('bush-booking'); if (!el) return;
+document.addEventListener("DOMContentLoaded", () => {
+  const form = document.querySelector(".bushlyaka-booking-form");
+  if (!form) return;
 
-  // ---------- State ----------
+  // --- Състояние ---
   const state = {
-    start: null,           // ISO (12:00)
-    end: null,             // ISO (12:00)
-    sector: null,          // 1..19
-    anglers: 1,            // 1 или 2
-    secondHasCard: false,  // вторият има карта?
-    pricing: null,         // от /pricing
-    priceEstimate: 0
+    start: null,
+    end: null,
+    sector: null,
+    anglers: 1,
+    secondHasCard: false,
+    pricing: null,
+    payMethods: [],
+    priceEstimate: 0,
   };
 
-  // ---------- DOM ----------
-  const steps          = [...el.querySelectorAll('.bush-step')];
-  const rangeInput     = document.getElementById('bush-date-range');
-  const durationBox    = document.getElementById('bush-duration');
-  const sectorsWrap    = document.getElementById('bush-sectors');
-  const unavailableBox = document.getElementById('bush-unavailable');
-  const anglersSel     = document.getElementById('bush-anglers');
-  const secondCard     = document.getElementById('bush-second-card');
-  const priceBox       = document.getElementById('bush-price');
-  const priceMeta      = document.getElementById('bush-price-meta');
-  const summary        = document.getElementById('bush-summary');
-  const submitBtn      = document.getElementById('bush-submit');
-  const resultBox      = document.getElementById('bush-result');
-  const payMethodSelect= document.getElementById('bush-pay-method');
-  const payInstrBox    = document.getElementById('bush-pay-instr');
-
-  const first  = document.getElementById('bush-first');
-  const last   = document.getElementById('bush-last');
-  const email  = document.getElementById('bush-email');
-  const phone  = document.getElementById('bush-phone');
-  const notes  = document.getElementById('bush-notes');
-
-  // ---------- Helpers ----------
-  function fmt(date){
-    const d = new Date(date);
-    const dd = String(d.getDate()).padStart(2,'0');
-    const mm = String(d.getMonth()+1).padStart(2,'0');
-    const yyyy = d.getFullYear();
-    return `${dd}.${mm}.${yyyy}, 12:00`;
-  }
-  function addDays(date, days){ const d = new Date(date); d.setDate(d.getDate()+days); return d; }
-  function isFriday(date){ return new Date(date).getDay() === 5; } // 0=Sun, 5=Fri
-  function hoursBetween(a,b){ return Math.round((new Date(b)-new Date(a))/36e5); }
-  function setStep(target){ steps.forEach(s => { s.hidden = s.getAttribute('data-step') !== String(target); }); }
-
-  // ---------- REST fetchers ----------
-  async function fetchPricing(){
-    try{
-      const r = await fetch(BushCfg.rest.base + 'pricing');
-      state.pricing = await r.json();
-      updatePrice();
-    } catch(e){ console.error('pricing error', e); }
-  }
-  async function fetchBlackouts(){
-    try{
-      const r = await fetch(BushCfg.rest.base + 'blackouts');
-      const ranges = await r.json();
-      const disable = (ranges || []).map(rg => ({ from: rg.start, to: rg.end }));
-      try { fp.set('disable', disable); } catch(e){}
-    } catch(e){ console.error('blackouts error', e); }
-  }
-  async function fetchPayMethods(){
-    try {
-      const r = await fetch(BushCfg.rest.base + 'payments/methods');
-      const methods = await r.json();
-      payMethodSelect.innerHTML = '';
-      if (!methods.length){
-        const opt = document.createElement('option');
-        opt.value = '0'; opt.textContent = 'На място';
-        payMethodSelect.appendChild(opt);
-        payInstrBox.textContent = '';
-        return;
-      }
-      methods.forEach(m => {
-        const opt = document.createElement('option');
-        opt.value = String(m.id);
-        opt.textContent = m.name;
-        opt.dataset.instructions = m.instructions || '';
-        payMethodSelect.appendChild(opt);
-      });
-      function updateInstr(){
-        const sel = payMethodSelect.options[payMethodSelect.selectedIndex];
-        payInstrBox.innerHTML = sel && sel.dataset.instructions ? sel.dataset.instructions : '';
-      }
-      payMethodSelect.addEventListener('change', updateInstr);
-      updateInstr();
-    } catch(e){ console.error('paymethods error', e); }
-  }
-
-  async function checkAvailability(){
-    if (!state.start || !state.end) return;
-    unavailableBox.textContent = 'Проверка за налични сектори...';
-    try {
-      const r = await fetch(BushCfg.rest.base + 'availability', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ start: state.start, end: state.end })
-      });
-      const data = await r.json();
-      const unavailable = data.unavailableSectors || [];
-      unavailableBox.textContent = unavailable.length ? 'Недостъпни: ' + unavailable.join(', ') : 'Всички сектори са налични.';
-
-      sectorsWrap.innerHTML = '';
-      (BushCfg.sectors || []).forEach(n => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'bush-sector';
-        const isBusy = unavailable.includes(n);
-        b.innerHTML = `
-          <span class="label">Сектор ${n}</span>
-          <span class="chip ${isBusy ? 'chip-busy' : 'chip-free'}">${isBusy ? 'Зает' : 'Свободен'}</span>
-          <small class="sub">12:00 → 12:00</small>
-        `;
-        if (isBusy) {
-          b.classList.add('unavailable');
-          b.disabled = true;
-        }
-        b.addEventListener('click', () => {
-          [...sectorsWrap.querySelectorAll('.bush-sector')].forEach(x=>x.classList.remove('selected'));
-          b.classList.add('selected');
-          state.sector = n;
-          el.querySelector('[data-step="2"] .bush-next]').disabled = false;
-        });
-        sectorsWrap.appendChild(b);
-      });
-    } catch(err){
-      console.error('availability error', err);
-      unavailableBox.textContent = 'Грешка при проверка. Показваме всички сектори като свободни.';
-      sectorsWrap.innerHTML = '';
-      (BushCfg.sectors || []).forEach(n => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'bush-sector';
-        b.innerHTML = `
-          <span class="label">Сектор ${n}</span>
-          <span class="chip chip-free">Свободен</span>
-          <small class="sub">12:00 → 12:00</small>
-        `;
-        b.addEventListener('click', () => {
-          [...sectorsWrap.querySelectorAll('.bush-sector')].forEach(x=>x.classList.remove('selected'));
-          b.classList.add('selected');
-          state.sector = n;
-          el.querySelector('[data-step="2"] .bush-next]').disabled = false;
-        });
-        sectorsWrap.appendChild(b);
-      });
-    }
-  }
-
-  // ---------- Price ----------
-  function updatePrice(){
-    if (!state.pricing) return;
-    const hours = state.start && state.end ? hoursBetween(state.start, state.end) : 0;
-    const blocks = Math.max(1, Math.round(hours/24));
-    let base = state.pricing.base_per_24h * blocks;
-    if (state.anglers === 2) {
-      base += (state.secondHasCard ? state.pricing.second_angler_with_card_price
-                                   : state.pricing.second_angler_price) * blocks;
-    }
-    state.priceEstimate = base;
-    if (priceBox) priceBox.textContent = base.toFixed(2) + ' лв';
-    if (priceMeta) priceMeta.textContent =
-      `База: ${state.pricing.base_per_24h} лв / 24ч; 2-ри рибар: ${(state.secondHasCard?state.pricing.second_angler_with_card_price:state.pricing.second_angler_price)} лв / 24ч`;
-  }
-
-  function rebuildSummary(){
-    if (!summary) return;
-    const h = hoursBetween(state.start,state.end)/24;
-    summary.innerHTML = `
-      <div><strong>Период:</strong> ${fmt(state.start)} → ${fmt(state.end)} (${h} × 24ч)</div>
-      <div><strong>Сектор:</strong> № ${state.sector}</div>
-      <div><strong>Рибари:</strong> ${state.anglers}${state.anglers===2?` (2-ри с${state.secondHasCard?'':' без'} карта)`:''}</div>
-      <div><strong>Ориентировъчна сума:</strong> ${state.priceEstimate.toFixed(2)} лв</div>
-    `;
-  }
-
-  // ---------- Flatpickr (INLINE) ----------
-  const fp = flatpickr(rangeInput, {
-    inline: true,      // винаги отворен
-    static: true,      // фиксиран в потока
-    mode: 'range',
-    showMonths: 2,
-    disableMobile: true,
-    dateFormat: 'Y-m-d',
-    locale: {
-      weekdays: { shorthand: ['Нд','Пн','Вт','Ср','Чт','Пт','Сб'], longhand: ['Неделя','Понеделник','Вторник','Сряда','Четвъртък','Петък','Събота'] },
-      months:   { shorthand: ['Ян','Фев','Мар','Апр','Май','Юни','Юли','Авг','Сеп','Окт','Ное','Дек'], longhand: ['Януари','Февруари','Март','Април','Май','Юни','Юли','Август','Септември','Октомври','Ноември','Декември'] }
-    },
-    minDate: 'today',
-    onChange: function(selectedDates){
-      // 1 дата → автоматичен край +24ч (или +48ч ако е петък)
-      if (selectedDates.length === 1){
-        const start = new Date(selectedDates[0]); start.setHours(12,0,0,0);
-        let end = addDays(start, 1);
-        if (isFriday(start)) end = addDays(start, 2);
-        state.start = start.toISOString(); state.end = end.toISOString();
-        durationBox.textContent = `Продължителност: ${hoursBetween(state.start,state.end)/24} × 24 часа`;
-        el.querySelector('[data-step="1"] .bush-next').disabled = false;
-      }
-      // 2 дати → валидиране на правилата
-      if (selectedDates.length === 2){
-        const start = new Date(selectedDates[0]); start.setHours(12,0,0,0);
-        let end = new Date(selectedDates[1]); end.setHours(12,0,0,0);
-        if (isFriday(start)){ const minEnd = addDays(start, 2); if (end < minEnd) end = minEnd; }
-        else if (end <= start) { end = addDays(start, 1); }
-        state.start = start.toISOString(); state.end = end.toISOString();
-        durationBox.textContent = `Продължителност: ${hoursBetween(state.start,state.end)/24} × 24 часа`;
-        el.querySelector('[data-step="1"] .bush-next').disabled = false;
-      }
-    },
-    onClose: function(){ if (state.start && state.end) { checkAvailability(); updatePrice(); } }
-  });
-
-  // Мобилна адаптация: 1 месец под 640px, 2 месеца иначе
-  function adaptCalendarForMobile(){
-    if (window.matchMedia('(max-width: 640px)').matches) {
-      try { fp.set('showMonths', 1); } catch(e){}
+  // --- Помощни функции ---
+  const showError = (msg) => {
+    const errorBox = form.querySelector(".bush-error-global");
+    if (errorBox) {
+      errorBox.textContent = msg;
+      errorBox.style.display = "block";
     } else {
-      try { fp.set('showMonths', 2); } catch(e){}
+      alert(msg);
     }
-  }
-  adaptCalendarForMobile();
-  window.addEventListener('resize', adaptCalendarForMobile);
+  };
 
-  // ---------- Nav ----------
-  el.querySelectorAll('.bush-next').forEach(btn => btn.addEventListener('click', (e)=>{
-    const to = parseInt(e.currentTarget.dataset.next,10);
-    if (to === 2) { checkAvailability(); }
-    if (to === 6) { rebuildSummary(); }
-    setStep(to);
-  }));
-  el.querySelectorAll('.bush-prev').forEach(btn => btn.addEventListener('click', (e)=>{
-    const to = parseInt(e.currentTarget.dataset.prev,10);
-    setStep(to);
-  }));
+  const clearError = () => {
+    const errorBox = form.querySelector(".bush-error-global");
+    if (errorBox) errorBox.style.display = "none";
+  };
 
-  // ---------- Anglers & card ----------
-  if (anglersSel) anglersSel.addEventListener('change', (e)=>{
-    state.anglers = parseInt(e.target.value,10);
-    secondCard.disabled = state.anglers !== 2;
-    if (state.anglers !== 2) { secondCard.checked = false; state.secondHasCard = false; }
-    updatePrice();
-  });
-  if (secondCard) secondCard.addEventListener('change', ()=>{ state.secondHasCard = !!secondCard.checked; updatePrice(); });
+  const validateEmail = (email) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  // ---------- Contact validation ----------
-  function validateContact(){ 
-    const ok = first.value && last.value && email.value.includes('@') && phone.value.length >= 6;
-    el.querySelector('[data-step="4"] .bush-next').disabled = !ok;
-  }
-  [first,last,email,phone].forEach(inp => inp && inp.addEventListener('input', validateContact));
+  const validatePhone = (phone) =>
+    /^[0-9+\-\s]{6,20}$/.test(phone);
 
-  // ---------- Submit ----------
-  if (submitBtn) submitBtn.addEventListener('click', async ()=>{
-    const consentEl = document.getElementById('bush-consent');
-    if (consentEl && !consentEl.checked) { alert('Моля, потвърдете съгласието.'); return; }
-    if (!state.sector) { alert('Моля, изберете сектор.'); return; }
-    submitBtn.disabled = true; resultBox.className = 'bush-result'; resultBox.textContent = 'Изпращане...';
+  const updatePrice = () => {
+    if (!state.pricing) return;
+    let price = state.pricing.base;
+    if (state.anglers > 1) {
+      price += state.secondHasCard
+        ? state.pricing.second_with_card
+        : state.pricing.second;
+    }
+    state.priceEstimate = price;
+    form.querySelector(".bush-price-estimate").textContent =
+      price + " лв.";
+  };
 
-    const payload = {
-      start: state.start, end: state.end, sector: state.sector,
-      anglers: state.anglers, secondHasCard: state.secondHasCard,
-      client: { firstName: first.value, lastName: last.value, email: email.value, phone: phone.value, notes: notes.value },
-      priceEstimate: state.priceEstimate,
-      payMethodId: (function(){ const v = payMethodSelect.value; return parseInt(v,10)||0; })()
-    };
+  const toggleLoading = (loading) => {
+    const btn = form.querySelector("button[type=submit]");
+    if (!btn) return;
+    btn.disabled = loading;
+    btn.textContent = loading ? "Изпращане..." : "Изпрати резервация";
+  };
 
+  // --- Fetch данни ---
+  const apiFetch = async (endpoint, options = {}) => {
     try {
-      const r = await fetch(BushCfg.rest.base + 'bookings', {
-        method:'POST',
-        headers:{'Content-Type':'application/json','X-WP-Nonce': BushCfg.rest.nonce},
-        body: JSON.stringify(payload)
-      });
-      const data = await r.json();
-      if (data && data.ok){
-        resultBox.className = 'bush-result ok';
-        resultBox.textContent = 'Заявката е изпратена. №: ' + data.bookingId;
-
-        // Забраняваме повторно натискане и пренасочваме след 3s
-        submitBtn.disabled = true;
-        setTimeout(() => { window.location.href = "/thanks"; }, 3000);
-
-      } else {
-        throw new Error((data && data.message) ? data.message : 'Грешка при запис.');
+      const res = await fetch(
+        bushlyaka.restUrl + endpoint,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "X-WP-Nonce": bushlyaka.nonce,
+          },
+          ...options,
+        }
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Грешка при заявката");
       }
-    } catch(err){
-      resultBox.className = 'bush-result err';
-      resultBox.textContent = 'Възникна проблем: ' + err.message;
-      submitBtn.disabled = false;
+      return res.json();
+    } catch (err) {
+      showError(err.message);
+      throw err;
+    }
+  };
+
+  // --- Календар ---
+  flatpickr(form.querySelector(".bush-date-range"), {
+    mode: "range",
+    dateFormat: "Y-m-d",
+    minDate: "today",
+    inline: true,
+    showMonths: window.innerWidth < 640 ? 1 : 2,
+    onChange: async (selectedDates) => {
+      if (selectedDates.length === 2) {
+        clearError();
+        state.start = selectedDates[0].toISOString();
+        state.end = selectedDates[1].toISOString();
+
+        // Проверка за заети сектори
+        try {
+          const data = await apiFetch("availability", {
+            method: "POST",
+            body: JSON.stringify({
+              start: state.start,
+              end: state.end,
+            }),
+          });
+          document
+            .querySelectorAll(".bush-sector")
+            .forEach((el) => {
+              const sec = el.dataset.sector;
+              if (data.unavailable.includes(sec)) {
+                el.classList.add("unavailable");
+                el.classList.remove("available", "selected");
+              } else {
+                el.classList.add("available");
+                el.classList.remove("unavailable");
+              }
+            });
+        } catch (err) {
+          // handled by apiFetch
+        }
+      }
+    },
+  });
+
+  // --- Сектори ---
+  form.querySelectorAll(".bush-sector").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      if (btn.classList.contains("unavailable")) return;
+      form.querySelectorAll(".bush-sector").forEach((el) =>
+        el.classList.remove("selected")
+      );
+      btn.classList.add("selected");
+      state.sector = btn.dataset.sector;
+    });
+  });
+
+  // --- Англери ---
+  form
+    .querySelector("[name=anglers]")
+    .addEventListener("change", (e) => {
+      state.anglers = parseInt(e.target.value, 10) || 1;
+      updatePrice();
+    });
+
+  form
+    .querySelector("[name=secondHasCard]")
+    .addEventListener("change", (e) => {
+      state.secondHasCard = e.target.checked;
+      updatePrice();
+    });
+
+  // --- Submit ---
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearError();
+
+    // Валидация
+    if (!state.start || !state.end) {
+      showError("Моля изберете дати.");
+      return;
+    }
+    if (!state.sector) {
+      showError("Моля изберете сектор.");
+      return;
+    }
+
+    const firstName = form.querySelector("[name=firstName]").value.trim();
+    const lastName = form.querySelector("[name=lastName]").value.trim();
+    const email = form.querySelector("[name=email]").value.trim();
+    const phone = form.querySelector("[name=phone]").value.trim();
+
+    if (!firstName || !lastName) {
+      showError("Моля въведете име и фамилия.");
+      return;
+    }
+    if (!validateEmail(email)) {
+      showError("Невалиден имейл адрес.");
+      return;
+    }
+    if (!validatePhone(phone)) {
+      showError("Невалиден телефон.");
+      return;
+    }
+
+    // Изпращане
+    toggleLoading(true);
+    try {
+      await apiFetch("bookings", {
+        method: "POST",
+        body: JSON.stringify({
+          start: state.start,
+          end: state.end,
+          sector: state.sector,
+          anglers: state.anglers,
+          secondHasCard: state.secondHasCard,
+          client: { firstName, lastName, email, phone },
+          notes: form.querySelector("[name=notes]").value.trim(),
+          payMethodId: form.querySelector("[name=payMethod]").value,
+        }),
+      });
+
+      form.innerHTML = `<p class="success">Резервацията е изпратена успешно!</p>`;
+      setTimeout(() => {
+        window.location.href = bushlyaka.redirectUrl || "/";
+      }, 2500);
+    } catch (err) {
+      toggleLoading(false);
     }
   });
 
-  // ---------- Init ----------
-  fetchPricing();
-  fetchBlackouts();
-  fetchPayMethods();
-})();
+  // --- Зареждане на данни ---
+  (async () => {
+    try {
+      const pricing = await apiFetch("pricing");
+      state.pricing = pricing;
+      updatePrice();
+
+      const payMethods = await apiFetch("payments/methods");
+      state.payMethods = payMethods;
+      const select = form.querySelector("[name=payMethod]");
+      payMethods.forEach((pm) => {
+        const opt = document.createElement("option");
+        opt.value = pm.id;
+        opt.textContent = pm.name;
+        select.appendChild(opt);
+      });
+    } catch (err) {
+      // handled by apiFetch
+    }
+  })();
+});
