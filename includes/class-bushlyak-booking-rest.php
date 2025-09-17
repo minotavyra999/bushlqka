@@ -50,11 +50,11 @@ class Bushlyak_Booking_REST {
 
         if ($range) {
             $parts = explode(' to ', $range);
-            $start = !empty($parts[0]) ? $parts[0] : '';
-            $end   = !empty($parts[1]) ? $parts[1] : $start;
+            $start = !empty($parts[0]) ? $parts[0] . ' 12:00:00' : '';
+            $end   = !empty($parts[1]) ? $parts[1] . ' 12:00:00' : $start;
         } else {
-            $start = sanitize_text_field( $request['start'] ?? '' );
-            $end   = sanitize_text_field( $request['end']   ?? '' );
+            $start = isset($request['start']) ? sanitize_text_field($request['start']) . ' 12:00:00' : '';
+            $end   = isset($request['end'])   ? sanitize_text_field($request['end'])   . ' 12:00:00' : '';
         }
 
         if ( ! $start || ! $end ) {
