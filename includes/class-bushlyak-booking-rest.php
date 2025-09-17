@@ -31,9 +31,20 @@ if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
                 'callback' => [ __CLASS__, 'post_booking' ],
                 'permission_callback' => [ __CLASS__, 'verify_nonce' ],
             ]);
+
+            register_rest_route( $namespace, '/blackouts', [
+                'methods'  => 'GET',
+                'callback' => [ __CLASS__, 'get_blackouts' ],
+                'permission_callback' => '__return_true',
+            ]);
+
+            register_rest_route( $namespace, '/payments/methods', [
+                'methods'  => 'GET',
+                'callback' => [ __CLASS__, 'get_paymethods' ],
+                'permission_callback' => '__return_true',
+            ]);
         }
 
-        /** Nonce проверка */
         public static function verify_nonce( $request ) {
             $nonce = $request->get_header( 'X-WP-Nonce' );
             if ( ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
@@ -42,23 +53,31 @@ if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
             return true;
         }
 
-        /** Калкулация на цената */
-        public static function calculate_price( $anglers = 1, $secondHasCard = false ) {
+        /** Калкулация на цената (на ден × дни) */
+        public static function calculate_price( $anglers = 1, $secondHasCard = false, $start = '', $end = '' ) {
             $prices = Bushlyak_Booking_DB::get_prices();
-            if ( ! $prices ) {
-                return 0;
+            if ( ! $prices ) return 0;
+
+            // колко дни (24-часови периода)
+            $days = 1;
+            if ($start && $end) {
+                try {
+                    $d1 = new DateTime($start);
+                    $d2 = new DateTime($end);
+                    $days = max(1, $d1->diff($d2)->days);
+                } catch (Exception $e) {
+                    $days = 1;
+                }
             }
 
             if ( $anglers == 1 ) {
-                return floatval( $prices->base );
+                return floatval($prices->base) * $days;
             }
-
             if ( $anglers == 2 && $secondHasCard ) {
-                return floatval( $prices->base ) + floatval( $prices->second_with_card );
+                return ( floatval($prices->base) + floatval($prices->second_with_card) ) * $days;
             }
-
             if ( $anglers == 2 ) {
-                return floatval( $prices->base ) + floatval( $prices->second );
+                return ( floatval($prices->base) + floatval($prices->second) ) * $days;
             }
 
             return 0;
@@ -74,16 +93,11 @@ if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
             return [
                 'base'             => floatval( $prices->base ),
                 'second'           => floatval( $prices->second ),
-                'second_with_card' => floatval( $prices->second_with_card ),
-                'examples'         => [
-                    '1_angler'        => self::calculate_price(1, false),
-                    '2_anglers'       => self::calculate_price(2, false),
-                    '2_anglers_card'  => self::calculate_price(2, true),
-                ]
+                'second_with_card' => floatval( $prices->second_with_card )
             ];
         }
 
-        /** API: Проверка на заетост */
+        /** API: заетост */
         public static function post_availability( $request ) {
             $params = $request->get_json_params();
             $start = sanitize_text_field( $params['start'] ?? '' );
@@ -98,7 +112,7 @@ if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
             ];
         }
 
-        /** API: Резервация */
+        /** API: резервация */
         public static function post_booking( $request ) {
             $params = $request->get_json_params();
 
@@ -112,10 +126,11 @@ if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
                 return new WP_Error( 'db_error', 'Неуспешно създаване на резервация.', [ 'status' => 500 ] );
             }
 
-            // връщаме и цената
             $price = self::calculate_price(
                 intval($params['anglers'] ?? 1),
-                !empty($params['secondHasCard'])
+                !empty($params['secondHasCard']),
+                $params['start'] ?? '',
+                $params['end'] ?? ''
             );
 
             return [
@@ -123,6 +138,16 @@ if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
                 'bookingId' => $booking_id,
                 'price'     => $price
             ];
+        }
+
+        /** API: blackouts */
+        public static function get_blackouts() {
+            return Bushlyak_Booking_DB::list_blackouts();
+        }
+
+        /** API: методи за плащане */
+        public static function get_paymethods() {
+            return Bushlyak_Booking_DB::list_paymethods();
         }
     }
 }
