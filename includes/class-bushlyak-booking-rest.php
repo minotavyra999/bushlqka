@@ -24,10 +24,13 @@ class Bushlyak_Booking_REST {
         ]);
     }
 
-    // Взимаме цените от базата
+    /**
+     * Връща цените от таблицата bush_prices
+     */
     public static function get_pricing( $request ) {
         global $wpdb;
         $prices = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_prices LIMIT 1", ARRAY_A);
+
         if ( ! $prices ) {
             $prices = [
                 'base'              => 50,
@@ -38,7 +41,9 @@ class Bushlyak_Booking_REST {
         return $prices;
     }
 
-    // Създаваме резервация
+    /**
+     * Създава резервация в таблицата bush_bookings
+     */
     public static function create_booking( $request ) {
         global $wpdb;
 
@@ -61,12 +66,15 @@ class Bushlyak_Booking_REST {
         $inserted = $wpdb->insert( "{$wpdb->prefix}bush_bookings", $data );
 
         if ( ! $inserted ) {
+            // DEBUG LOG
+            error_log("Bushlyak Booking DB insert error: " . $wpdb->last_error);
+            error_log("Bushlyak Booking DB insert data: " . print_r($data, true));
             return new WP_Error( 'db_error', 'Грешка при запис в базата', [ 'status' => 500 ] );
         }
 
         $booking_id = $wpdb->insert_id;
 
-        // изпращаме имейл
+        // Изпращаме имейл с детайли
         Bushlyak_Booking_Plugin::send_booking_email( $booking_id );
 
         return [
@@ -75,7 +83,9 @@ class Bushlyak_Booking_REST {
         ];
     }
 
-    // Калкулация на цена (може да я ползваме в админ или email)
+    /**
+     * Калкулация на цената
+     */
     public static function calculate_price( $anglers, $secondHasCard, $start, $end ) {
         $prices = self::get_pricing(null);
 
