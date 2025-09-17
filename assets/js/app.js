@@ -1,5 +1,12 @@
 jQuery(document).ready(function($) {
 
+    // избор на сектор
+    $(document).on('click', '.bush-sector', function() {
+        $('.bush-sector').removeClass('selected');
+        $(this).addClass('selected');
+        $('#bush-sector-input').val($(this).data('sector'));
+    });
+
     // показване на информация за метода на плащане
     $('#bush-paymethod').on('change', function() {
         let info = $(this).find(':selected').data('info') || '';
@@ -40,11 +47,4 @@ jQuery(document).ready(function($) {
 
     // init flatpickr always open
     flatpickr(".bush-date-range", {
-        mode: "range",
-        dateFormat: "Y-m-d",
-        inline: true,
-        onChange: function() { updatePrice(); }
-    });
-
-    $('[name="anglers"], [name="secondHasCard"]').on('change', updatePrice);
-});
+        mode
