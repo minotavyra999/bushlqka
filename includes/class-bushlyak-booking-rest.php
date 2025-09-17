@@ -1,145 +1,152 @@
 <?php
-if (!defined('ABSPATH')) exit;
+if ( ! defined( 'ABSPATH' ) ) {
+    exit;
+}
 
 class Bushlyak_Booking_REST {
-    public function __construct(){
-        add_action('rest_api_init', [$this, 'register_routes']);
+
+    public static function init() {
+        add_action( 'rest_api_init', [ __CLASS__, 'register_routes' ] );
     }
 
-    public function register_routes(){
-        register_rest_route('bush/v1', '/pricing', [
-            'methods' => 'GET',
-            'callback' => [$this, 'get_pricing'],
+    public static function register_routes() {
+        $namespace = 'bush/v1';
+
+        register_rest_route( $namespace, '/pricing', [
+            'methods'  => 'GET',
+            'callback' => [ __CLASS__, 'get_pricing' ],
             'permission_callback' => '__return_true',
         ]);
-        register_rest_route('bush/v1', '/availability', [
-            'methods' => 'POST',
-            'callback' => [$this, 'post_availability'],
+
+        register_rest_route( $namespace, '/availability', [
+            'methods'  => 'POST',
+            'callback' => [ __CLASS__, 'post_availability' ],
+            'permission_callback' => [ __CLASS__, 'verify_nonce' ],
+        ]);
+
+        register_rest_route( $namespace, '/bookings', [
+            'methods'  => 'POST',
+            'callback' => [ __CLASS__, 'post_booking' ],
+            'permission_callback' => [ __CLASS__, 'verify_nonce' ],
+        ]);
+
+        register_rest_route( $namespace, '/blackouts', [
+            'methods'  => 'GET',
+            'callback' => [ __CLASS__, 'get_blackouts' ],
             'permission_callback' => '__return_true',
         ]);
-        register_rest_route('bush/v1', '/bookings', [
-            'methods' => 'POST',
-            'callback' => [$this, 'post_booking'],
-            'permission_callback' => '__return_true',
-        ]);
-        register_rest_route('bush/v1', '/blackouts', [
-            'methods' => 'GET',
-            'callback' => [$this, 'get_blackouts'],
-            'permission_callback' => '__return_true',
-        ]);
-        register_rest_route('bush/v1', '/payments/methods', [
-            'methods' => 'GET',
-            'callback' => [$this, 'get_paymethods'],
+
+        register_rest_route( $namespace, '/payments/methods', [
+            'methods'  => 'GET',
+            'callback' => [ __CLASS__, 'get_paymethods' ],
             'permission_callback' => '__return_true',
         ]);
     }
 
-    public function get_pricing($req){
+    /** Verify nonce for security */
+    public static function verify_nonce( $request ) {
+        $nonce = $request->get_header( 'X-WP-Nonce' );
+        if ( ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+            return new WP_Error( 'forbidden', 'Невалиден или липсващ nonce.', [ 'status' => 403 ] );
+        }
+        return true;
+    }
+
+    /** Get current pricing */
+    public static function get_pricing( $request ) {
         return Bushlyak_Booking_DB::get_prices();
     }
 
-    public function post_availability($req){
-        $p = $req->get_json_params();
-        $start = sanitize_text_field($p['start'] ?? '');
-        $end   = sanitize_text_field($p['end'] ?? '');
-        if (!$start || !$end) return new WP_Error('bad_request','Missing dates', ['status' => 400]);
-        $unav = Bushlyak_Booking_DB::find_unavailable_sectors($start, $end);
-        return [ 'unavailableSectors' => $unav ];
-    }
+    /** Check availability */
+    public static function post_availability( $request ) {
+        $params = $request->get_json_params();
+        $start = sanitize_text_field( $params['start'] ?? '' );
+        $end   = sanitize_text_field( $params['end'] ?? '' );
 
-    public function get_blackouts($req){
-        $rows = Bushlyak_Booking_DB::list_blackout_ranges();
-        $out = [];
-        foreach ($rows as $r) { $out[] = [ 'start' => $r->start_date, 'end' => $r->end_date ]; }
-        return $out;
-    }
-
-    public function get_paymethods($req){
-        $rows = Bushlyak_Booking_DB::list_paymethods();
-        $out = [];
-        foreach ($rows as $r) { $out[] = [ 'id' => (int)$r->id, 'name' => $r->name, 'instructions' => $r->instructions ]; }
-        return $out;
-    }
-
-    public function post_booking($req){
-        $p = $req->get_json_params();
-        $required = ['start','end','sector','anglers','client'];
-        foreach ($required as $k) if (!isset($p[$k])) return new WP_Error('bad_request', 'Missing '.$k, ['status'=>400]);
-
-        $start = sanitize_text_field($p['start']);
-        $end   = sanitize_text_field($p['end']);
-        $sector = intval($p['sector']);
-        $anglers = intval($p['anglers']);
-        $second_has_card = !empty($p['secondHasCard']) ? 1 : 0;
-        $client = $p['client'];
-
-        // Нормализиране на 12:00 → 12:00 и правило „петък ⇒ минимум 48ч“
-        try {
-            $s = new DateTime($start); $e = new DateTime($end);
-            $s->setTime(12,0); $e->setTime(12,0);
-            if ((int)$s->format('N') === 5) { // Friday
-                $minEnd = clone $s; $minEnd->modify('+2 days');
-                if ($e < $minEnd) $e = $minEnd;
-            } else if ($e <= $s) {
-                $e = (clone $s)->modify('+1 day');
-            }
-            $start = $s->format('Y-m-d H:i:s'); $end = $e->format('Y-m-d H:i:s');
-        } catch (\Exception $ex) {}
-
-        $payMethodId = isset($p['payMethodId']) ? intval($p['payMethodId']) : 0;
-        $pm = null;
-        if ($payMethodId) {
-            foreach (Bushlyak_Booking_DB::list_paymethods() as $m) { if ((int)$m->id === $payMethodId) { $pm = $m; break; } }
+        if ( empty( $start ) || empty( $end ) ) {
+            return new WP_Error( 'invalid_request', 'Липсва начален или краен час.', [ 'status' => 400 ] );
         }
 
-        $data = [
-            'start' => $start,
-            'end' => $end,
-            'sector' => $sector,
-            'anglers' => $anglers,
-            'second_has_card' => $second_has_card,
-            'client_first' => sanitize_text_field($client['firstName'] ?? ''),
-            'client_last'  => sanitize_text_field($client['lastName'] ?? ''),
-            'email' => sanitize_email($client['email'] ?? ''),
-            'phone' => sanitize_text_field($client['phone'] ?? ''),
-            'notes' => sanitize_text_field($client['notes'] ?? ''),
-            'price_estimate' => floatval($p['priceEstimate'] ?? 0),
-            'status' => 'pending',
-            'pay_method' => $pm ? $pm->name : null,
-            'pay_instructions' => $pm ? $pm->instructions : null,
+        $unavailable = Bushlyak_Booking_DB::find_unavailable_sectors( $start, $end );
+        return [ 'unavailable' => $unavailable ];
+    }
+
+    /** Create new booking */
+    public static function post_booking( $request ) {
+        $params = $request->get_json_params();
+
+        // Validate required fields
+        $required = [ 'start', 'end', 'sector', 'anglers', 'client' ];
+        foreach ( $required as $field ) {
+            if ( empty( $params[ $field ] ) ) {
+                return new WP_Error( 'missing_field', "Полето {$field} е задължително.", [ 'status' => 400 ] );
+            }
+        }
+
+        $start = sanitize_text_field( $params['start'] );
+        $end   = sanitize_text_field( $params['end'] );
+        $sector = sanitize_text_field( $params['sector'] );
+        $anglers = intval( $params['anglers'] );
+
+        $client = [
+            'firstName' => sanitize_text_field( $params['client']['firstName'] ?? '' ),
+            'lastName'  => sanitize_text_field( $params['client']['lastName'] ?? '' ),
+            'email'     => sanitize_email( $params['client']['email'] ?? '' ),
+            'phone'     => sanitize_text_field( $params['client']['phone'] ?? '' ),
         ];
 
-        $id = Bushlyak_Booking_DB::create_booking($data);
-        if (!$id){ return new WP_Error('db_insert_failed', 'Неуспешно записване в базата данни.', ['status'=>500]); }
+        if ( empty( $client['firstName'] ) || empty( $client['lastName'] ) ) {
+            return new WP_Error( 'invalid_client', 'Моля въведете име и фамилия.', [ 'status' => 400 ] );
+        }
+        if ( ! is_email( $client['email'] ) ) {
+            return new WP_Error( 'invalid_email', 'Невалиден имейл адрес.', [ 'status' => 400 ] );
+        }
+        if ( ! preg_match( '/^[0-9+\-\s]{6,20}$/', $client['phone'] ) ) {
+            return new WP_Error( 'invalid_phone', 'Невалиден телефонен номер.', [ 'status' => 400 ] );
+        }
 
-        // Имейл известие към админ(и)
-        $emails_raw = get_option('bush_notify_emails', get_option('admin_email'));
-        $emails = array_map('trim', explode(',', $emails_raw));
-        $subject = 'Нова резервация – Яз. Бушляк';
-        $priceFmt = number_format((float)$data['price_estimate'], 2, '.', ' ') . ' лв';
+        // Check if sector is available
+        $conflicts = Bushlyak_Booking_DB::find_unavailable_sectors( $start, $end );
+        if ( in_array( $sector, $conflicts, true ) ) {
+            return new WP_Error( 'conflict', 'Избраният сектор е вече зает.', [ 'status' => 409 ] );
+        }
 
-        $body  = '<h2 style="margin:0 0 12px 0;font-family:Arial">Нова резервация – Яз. Бушляк</h2>';
-        $body .= '<table cellpadding="8" cellspacing="0" style="border-collapse:collapse;font-family:Arial;border:1px solid #e5e7eb">';
-        $row = function($a,$b){ return '<tr><td style="border:1px solid #e5e7eb;background:#f9fafb"><b>'.$a.'</b></td><td style="border:1px solid #e5e7eb">'.esc_html($b).'</td></tr>'; };
-        $body .= $row('Период', $data['start'].' → '.$data['end']);
-        $body .= $row('Сектор', $data['sector']);
-        $body .= $row('Рибари', $data['anglers'].($data['anglers']==2?($data['second_has_card']?' (2-ри с карта)':' (2-ри без карта)') : ''));
-        $body .= $row('Цена', $priceFmt);
-        $body .= $row('Име', $data['client_first'].' '.$data['client_last']);
-        $body .= $row('Имейл', $data['email']);
-        $body .= $row('Телефон', $data['phone']);
-        if (!empty($data['notes'])) $body .= $row('Бележка', $data['notes']);
-        if (!empty($data['pay_method'])) $body .= $row('Метод на плащане', $data['pay_method']);
-        if (!empty($data['pay_instructions'])) $body .= '<tr><td style="border:1px solid #e5e7eb;background:#f9fafb"><b>Инструкции</b></td><td style="border:1px solid #e5e7eb">'.wp_kses_post($data['pay_instructions']).'</td></tr>';
-        $body .= '</table>';
+        // Create booking
+        $booking_id = Bushlyak_Booking_DB::create_booking([
+            'start'  => $start,
+            'end'    => $end,
+            'sector' => $sector,
+            'anglers'=> $anglers,
+            'client' => $client,
+            'notes'  => sanitize_textarea_field( $params['notes'] ?? '' ),
+            'pay_method'      => sanitize_text_field( $params['payMethodId'] ?? '' ),
+            'pay_instructions'=> sanitize_textarea_field( $params['payInstructions'] ?? '' ),
+        ]);
 
-        $link = add_query_arg(['page'=>'bushlyak-booking','view'=>$id], admin_url('admin.php'));
-        $body .= '<p><a href="'.esc_url($link).'" style="display:inline-block;background:#2563eb;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-family:Arial">Прегледай резервацията</a></p>';
+        if ( ! $booking_id ) {
+            return new WP_Error( 'db_error', 'Неуспешно създаване на резервация.', [ 'status' => 500 ] );
+        }
 
-        add_filter('wp_mail_content_type', function(){ return 'text/html; charset=UTF-8'; });
-        foreach ($emails as $to){ if ($to) wp_mail($to, $subject, $body); }
-        remove_filter('wp_mail_content_type', '__return_false');
+        // Send email notification
+        $to = get_option( 'bush_notify_emails', get_option( 'admin_email' ) );
+        $subject = "Нова резервация #{$booking_id}";
+        $message = "Име: {$client['firstName']} {$client['lastName']}\n"
+                 . "Имейл: {$client['email']}\nТелефон: {$client['phone']}\n"
+                 . "Сектор: {$sector}\nОт: {$start}\nДо: {$end}\n"
+                 . "Рибари: {$anglers}\n\nБележки: " . ( $params['notes'] ?? '' );
 
-        return [ 'ok' => true, 'bookingId' => (string)$id ];
+        wp_mail( $to, $subject, $message );
+
+        return [ 'ok' => true, 'bookingId' => $booking_id ];
+    }
+
+    /** Get blackout ranges */
+    public static function get_blackouts( $request ) {
+        return Bushlyak_Booking_DB::list_blackout_ranges();
+    }
+
+    /** Get pay methods */
+    public static function get_paymethods( $request ) {
+        return Bushlyak_Booking_DB::list_paymethods();
     }
 }
