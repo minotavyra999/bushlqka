@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Bushlyak Booking
  * Description: Система за резервации на сектори (риболов).
- * Version: 1.4.0
+ * Version: 1.5.0
  * Author: minotavyra
  */
 
@@ -85,8 +85,8 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
             wp_enqueue_style( 'flatpickr', 'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css', [], '4.6.13' );
             wp_enqueue_script( 'flatpickr', 'https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.js', [], '4.6.13', true );
 
-            wp_enqueue_style( 'bushlyak-booking', $url . 'assets/css/styles.css', [], '1.4' );
-            wp_enqueue_script( 'bushlyak-booking', $url . 'assets/js/app.js', [ 'jquery' ], '1.4', true );
+            wp_enqueue_style( 'bushlyak-booking', $url . 'assets/css/styles.css', [], '1.5' );
+            wp_enqueue_script( 'bushlyak-booking', $url . 'assets/js/app.js', [ 'jquery' ], '1.5', true );
 
             wp_localize_script( 'bushlyak-booking', 'bushlyaka', [
                 'restUrl'     => esc_url_raw( rest_url( 'bush/v1/' ) ),
@@ -185,6 +185,10 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
                 $b->end
             );
 
+            // метод на плащане
+            $pay = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_paymethods WHERE id=".intval($b->pay_method));
+            $pay_display = $pay ? $pay->name . ' – ' . $pay->instructions : '—';
+
             ob_start(); ?>
             <div class="bush-booking-summary">
                 <h2>Резервация №<?php echo $b->id; ?></h2>
@@ -194,7 +198,7 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
                 <p><strong>Имейл:</strong> <?php echo $b->client_email; ?></p>
                 <p><strong>Телефон:</strong> <?php echo $b->client_phone; ?></p>
                 <p><strong>Бележки:</strong> <?php echo $b->notes; ?></p>
-                <p><strong>Метод на плащане:</strong> <?php echo $b->pay_method; ?></p>
+                <p><strong>Метод на плащане:</strong> <?php echo esc_html($pay_display); ?></p>
                 <p><strong>Статус:</strong> <?php echo $b->status; ?></p>
                 <p><strong>Обща цена:</strong> <?php echo number_format($price, 2, '.', ' '); ?> лв.</p>
             </div>
@@ -213,6 +217,10 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
                 $b->start,
                 $b->end
             );
+
+            // метод на плащане
+            $pay = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_paymethods WHERE id=".intval($b->pay_method));
+            $pay_display = $pay ? $pay->name . ' – ' . $pay->instructions : '—';
 
             $subject = "Вашата резервация №{$b->id}";
 
@@ -235,7 +243,7 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
                   <tr><th>Име</th><td>'.$b->client_first.' '.$b->client_last.'</td></tr>
                   <tr><th>Имейл</th><td>'.$b->client_email.'</td></tr>
                   <tr><th>Телефон</th><td>'.$b->client_phone.'</td></tr>
-                  <tr><th>Метод на плащане</th><td>'.$b->pay_method.'</td></tr>
+                  <tr><th>Метод на плащане</th><td>'.$pay_display.'</td></tr>
                   <tr><th>Бележки</th><td>'.$b->notes.'</td></tr>
                   <tr><th>Статус</th><td>'.$b->status.'</td></tr>
                   <tr><th>Обща цена</th><td>'.number_format($price, 2, '.', ' ').' лв.</td></tr>
