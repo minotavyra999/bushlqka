@@ -1,156 +1,97 @@
 <?php
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
+if ( ! defined( 'ABSPATH' ) ) exit;
 
-if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
+class Bushlyak_Booking_REST {
 
-    class Bushlyak_Booking_REST {
+    public static function init() {
+        add_action( 'rest_api_init', [ __CLASS__, 'register_routes' ] );
+    }
 
-        public static function init() {
-            add_action( 'rest_api_init', [ __CLASS__, 'register_routes' ] );
-        }
+    public static function register_routes() {
 
-        public static function register_routes() {
-            $namespace = 'bush/v1';
+        // GET цени
+        register_rest_route( 'bush/v1', '/pricing', [
+            'methods'  => 'GET',
+            'callback' => [ __CLASS__, 'get_pricing' ],
+            'permission_callback' => '__return_true',
+        ]);
 
-            register_rest_route( $namespace, '/pricing', [
-                'methods'  => 'GET',
-                'callback' => [ __CLASS__, 'get_pricing' ],
-                'permission_callback' => '__return_true',
-            ]);
+        // POST нова резервация
+        register_rest_route( 'bush/v1', '/bookings', [
+            'methods'  => 'POST',
+            'callback' => [ __CLASS__, 'create_booking' ],
+            'permission_callback' => '__return_true',
+        ]);
+    }
 
-            register_rest_route( $namespace, '/availability', [
-                'methods'  => 'POST',
-                'callback' => [ __CLASS__, 'post_availability' ],
-                'permission_callback' => [ __CLASS__, 'verify_nonce' ],
-            ]);
-
-            register_rest_route( $namespace, '/bookings', [
-                'methods'  => 'POST',
-                'callback' => [ __CLASS__, 'post_booking' ],
-                'permission_callback' => [ __CLASS__, 'verify_nonce' ],
-            ]);
-
-            register_rest_route( $namespace, '/blackouts', [
-                'methods'  => 'GET',
-                'callback' => [ __CLASS__, 'get_blackouts' ],
-                'permission_callback' => '__return_true',
-            ]);
-
-            register_rest_route( $namespace, '/payments/methods', [
-                'methods'  => 'GET',
-                'callback' => [ __CLASS__, 'get_paymethods' ],
-                'permission_callback' => '__return_true',
-            ]);
-        }
-
-        public static function verify_nonce( $request ) {
-            $nonce = $request->get_header( 'X-WP-Nonce' );
-            if ( ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
-                return new WP_Error( 'forbidden', 'Невалиден или липсващ nonce.', [ 'status' => 403 ] );
-            }
-            return true;
-        }
-
-        /** Калкулация на цената (на ден × дни) */
-        public static function calculate_price( $anglers = 1, $secondHasCard = false, $start = '', $end = '' ) {
-            $prices = Bushlyak_Booking_DB::get_prices();
-            if ( ! $prices ) return 0;
-
-            $days = 1;
-            if ($start && $end) {
-                try {
-                    $d1 = new DateTime($start);
-                    $d2 = new DateTime($end);
-                    $days = max(1, $d1->diff($d2)->days);
-                } catch (Exception $e) {
-                    $days = 1;
-                }
-            }
-
-            if ( $anglers == 1 ) {
-                return floatval($prices->base) * $days;
-            }
-            if ( $anglers == 2 && $secondHasCard ) {
-                return ( floatval($prices->base) + floatval($prices->second_with_card) ) * $days;
-            }
-            if ( $anglers == 2 ) {
-                return ( floatval($prices->base) + floatval($prices->second) ) * $days;
-            }
-
-            return 0;
-        }
-
-        /** API: Връща цените */
-        public static function get_pricing() {
-            $prices = Bushlyak_Booking_DB::get_prices();
-            if ( ! $prices ) {
-                return new WP_Error( 'no_prices', 'Няма въведени цени.', [ 'status' => 404 ] );
-            }
-
-            return [
-                'base'             => floatval( $prices->base ),
-                'second'           => floatval( $prices->second ),
-                'second_with_card' => floatval( $prices->second_with_card )
+    // Взимаме цените от базата
+    public static function get_pricing( $request ) {
+        global $wpdb;
+        $prices = $wpdb->get_row("SELECT * FROM {$wpdb->prefix}bush_prices LIMIT 1", ARRAY_A);
+        if ( ! $prices ) {
+            $prices = [
+                'base'              => 50,
+                'second'            => 30,
+                'second_with_card'  => 20,
             ];
         }
+        return $prices;
+    }
 
-        /** API: заетост */
-        public static function post_availability( $request ) {
-            $params = $request->get_json_params();
-            $start = sanitize_text_field( $params['start'] ?? '' );
-            $end   = sanitize_text_field( $params['end'] ?? '' );
+    // Създаваме резервация
+    public static function create_booking( $request ) {
+        global $wpdb;
 
-            if ( empty( $start ) || empty( $end ) ) {
-                return new WP_Error( 'invalid_request', 'Липсва начален или краен час.', [ 'status' => 400 ] );
-            }
+        $data = [
+            'start'         => sanitize_text_field( $request['start'] ),
+            'end'           => sanitize_text_field( $request['end'] ),
+            'sector'        => intval( $request['sector'] ),
+            'anglers'       => intval( $request['anglers'] ),
+            'secondHasCard' => ! empty($request['secondHasCard']) ? 1 : 0,
+            'pay_method'    => intval( $request['payMethod'] ),
+            'notes'         => sanitize_textarea_field( $request['notes'] ),
+            'client_first'  => sanitize_text_field( $request['firstName'] ),
+            'client_last'   => sanitize_text_field( $request['lastName'] ),
+            'client_email'  => sanitize_email( $request['email'] ),
+            'client_phone'  => sanitize_text_field( $request['phone'] ),
+            'status'        => 'pending',
+            'created_at'    => current_time('mysql'),
+        ];
 
-            return [
-                'unavailable' => Bushlyak_Booking_DB::find_unavailable_sectors( $start, $end )
-            ];
+        $inserted = $wpdb->insert( "{$wpdb->prefix}bush_bookings", $data );
+
+        if ( ! $inserted ) {
+            return new WP_Error( 'db_error', 'Грешка при запис в базата', [ 'status' => 500 ] );
         }
 
-        /** API: резервация */
-        public static function post_booking( $request ) {
-            $params = $request->get_json_params();
+        $booking_id = $wpdb->insert_id;
 
-            if ( empty( $params['start'] ) || empty( $params['end'] ) || empty( $params['sector'] ) ) {
-                return new WP_Error( 'missing_field', 'Липсват задължителни полета.', [ 'status' => 400 ] );
-            }
+        // изпращаме имейл
+        Bushlyak_Booking_Plugin::send_booking_email( $booking_id );
 
-            $booking_id = Bushlyak_Booking_DB::create_booking( $params );
+        return [
+            'id'      => $booking_id,
+            'message' => 'Резервацията е успешно създадена.',
+        ];
+    }
 
-            if ( ! $booking_id ) {
-                return new WP_Error( 'db_error', 'Неуспешно създаване на резервация.', [ 'status' => 500 ] );
-            }
+    // Калкулация на цена (може да я ползваме в админ или email)
+    public static function calculate_price( $anglers, $secondHasCard, $start, $end ) {
+        $prices = self::get_pricing(null);
 
-            $price = self::calculate_price(
-                intval($params['anglers'] ?? 1),
-                !empty($params['secondHasCard']),
-                $params['start'] ?? '',
-                $params['end'] ?? ''
-            );
+        $s = strtotime($start);
+        $e = strtotime($end);
+        $days = max(1, ceil(($e - $s) / DAY_IN_SECONDS));
 
-            // Изпращаме имейл
-            Bushlyak_Booking_Plugin::send_booking_email($booking_id);
-
-            return [
-                'ok'         => true,
-                'bookingId'  => $booking_id,
-                'price'      => $price,
-                'redirect'   => home_url('/booking-summary?booking=' . $booking_id),
-            ];
+        $total = 0;
+        if ($anglers == 1) {
+            $total = $prices['base'] * $days;
+        } elseif ($anglers == 2 && $secondHasCard) {
+            $total = ($prices['base'] + $prices['second_with_card']) * $days;
+        } else {
+            $total = ($prices['base'] + $prices['second']) * $days;
         }
 
-        /** API: blackouts */
-        public static function get_blackouts() {
-            return Bushlyak_Booking_DB::list_blackouts();
-        }
-
-        /** API: методи за плащане */
-        public static function get_paymethods() {
-            return Bushlyak_Booking_DB::list_paymethods();
-        }
+        return $total;
     }
 }
