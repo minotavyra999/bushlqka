@@ -81,3 +81,36 @@ button[type="submit"]:hover {
 .bushlyaka-booking-form .flatpickr-calendar {
     position: absolute !important; /* да излиза над формата */
 }
+/* Календарът да следва широчината на input-а и да запълва контейнера */
+.bush-date-range {
+  width: 100% !important;
+  box-sizing: border-box;
+}
+
+/* Inline flatpickr: full-width контейнер */
+.flatpickr-calendar.inline {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: unset !important;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  margin-top: 8px;
+  box-shadow: none;
+}
+
+/* Да запълни с 7 равни колони (дните) */
+.flatpickr-days { width: 100% !important; }
+.flatpickr-days .dayContainer {
+  width: 100% !important;
+  max-width: 100% !important;
+  display: grid !important;
+  grid-template-columns: repeat(7, 1fr) !important;
+  grid-gap: 0 !important;
+}
+.flatpickr-day {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  height: 36px;
+  line-height: 36px;
+}
