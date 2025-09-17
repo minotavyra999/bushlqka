@@ -5,24 +5,33 @@ class Bushlyak_Booking_REST {
 
     public static function register_routes() {
         register_rest_route('bush/v1', '/bookings', [
-            'methods' => 'POST',
+            'methods'  => 'POST',
             'callback' => [__CLASS__, 'create_booking'],
             'permission_callback' => '__return_true',
         ]);
 
         register_rest_route('bush/v1', '/available-sectors', [
-            'methods' => 'GET',
+            'methods'  => 'GET',
             'callback' => [__CLASS__, 'get_available_sectors'],
             'permission_callback' => '__return_true',
         ]);
 
         register_rest_route('bush/v1', '/pricing', [
-            'methods' => 'GET',
+            'methods'  => 'GET',
             'callback' => [__CLASS__, 'get_pricing'],
+            'permission_callback' => '__return_true',
+        ]);
+
+        register_rest_route('bush/v1', '/paymethods', [
+            'methods'  => 'GET',
+            'callback' => [__CLASS__, 'get_paymethods'],
             'permission_callback' => '__return_true',
         ]);
     }
 
+    /**
+     * Създаване на резервация
+     */
     public static function create_booking($request) {
         global $wpdb;
         $table = $wpdb->prefix . 'bush_bookings';
@@ -44,13 +53,17 @@ class Bushlyak_Booking_REST {
         ];
 
         $wpdb->insert($table, $data);
+
         if ($wpdb->last_error) {
-            return new WP_Error('db_error', $wpdb->last_error, ['status'=>500]);
+            return new WP_Error('db_error', $wpdb->last_error, ['status' => 500]);
         }
 
-        return ['success'=>true,'id'=>$wpdb->insert_id];
+        return ['success' => true, 'id' => $wpdb->insert_id];
     }
 
+    /**
+     * Свободни сектори за даден период
+     */
     public static function get_available_sectors($request) {
         global $wpdb;
         $table = $wpdb->prefix . 'bush_bookings';
@@ -58,23 +71,34 @@ class Bushlyak_Booking_REST {
         $start = sanitize_text_field($request['start']);
         $end   = sanitize_text_field($request['end']);
 
-        // Заети сектори
         $booked = $wpdb->get_col($wpdb->prepare(
-            "SELECT DISTINCT sector FROM $table 
-             WHERE (start <= %s AND end >= %s) 
+            "SELECT DISTINCT sector FROM $table
+             WHERE (start <= %s AND end >= %s)
              AND status IN ('pending','approved')",
             $end, $start
         ));
 
-        $all = range(1,19);
+        $all = range(1, 19);
         $available = array_values(array_diff($all, $booked ?: []));
 
-        return ['available'=>$available];
+        return ['available' => $available];
     }
 
+    /**
+     * Ценови правила
+     */
     public static function get_pricing($request) {
         global $wpdb;
         $table = $wpdb->prefix . 'bush_prices';
         return $wpdb->get_results("SELECT * FROM $table");
+    }
+
+    /**
+     * Методи за плащане
+     */
+    public static function get_paymethods($request) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'bush_paymethods';
+        return $wpdb->get_results("SELECT id, name, instructions FROM $table WHERE active = 1");
     }
 }
