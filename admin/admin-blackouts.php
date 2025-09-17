@@ -3,88 +3,79 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 
 global $wpdb;
 
-if ( isset($_POST['action']) && $_POST['action'] === 'add_blackout' ) {
-    check_admin_referer('bush_blackout_action');
+// Добавяне на blackout
+if ( isset($_POST['bush_add_blackout']) && check_admin_referer('bush_blackout_action') ) {
+    $start  = sanitize_text_field($_POST['start']) . ' 12:00:00';
+    $end    = sanitize_text_field($_POST['end'])   . ' 12:00:00';
+    $reason = sanitize_text_field($_POST['reason']);
 
-    $dates = explode(" to ", sanitize_text_field($_POST['daterange']));
-    $start = !empty($dates[0]) ? $dates[0] : null;
-    $end   = !empty($dates[1]) ? $dates[1] : null;
-
-    if ($start && $end) {
-        $wpdb->insert(
-            "{$wpdb->prefix}bush_blackouts",
-            [
-                'start'  => $start,
-                'end'    => $end,
-                'reason' => sanitize_text_field($_POST['reason'])
-            ],
-            [ '%s','%s','%s' ]
-        );
-    }
+    $wpdb->insert("{$wpdb->prefix}bush_blackouts", [
+        'start'  => $start,
+        'end'    => $end,
+        'reason' => $reason,
+    ]);
+    echo '<div class="updated"><p>Blackout периодът е добавен.</p></div>';
 }
 
-if ( isset($_GET['delete']) ) {
-    $id = intval($_GET['delete']);
-    $wpdb->delete( "{$wpdb->prefix}bush_blackouts", [ 'id' => $id ], [ '%d' ] );
+// Изтриване
+if ( isset($_GET['delete']) && check_admin_referer('bush_blackout_delete') ) {
+    $wpdb->delete("{$wpdb->prefix}bush_blackouts", [ 'id' => intval($_GET['delete']) ]);
+    echo '<div class="updated"><p>Blackout периодът е изтрит.</p></div>';
 }
+
+$blackouts = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}bush_blackouts ORDER BY start DESC");
 ?>
 <div class="wrap">
-    <h1><?php _e('Blackout периоди', 'bushlyaka'); ?></h1>
+    <h1>Blackout периоди</h1>
 
     <form method="post">
         <?php wp_nonce_field('bush_blackout_action'); ?>
-        <input type="hidden" name="action" value="add_blackout">
         <table class="form-table">
             <tr>
-                <th><label for="daterange"><?php _e('Период', 'bushlyaka'); ?></label></th>
-                <td><input type="text" name="daterange" class="blackout-range" required></td>
+                <th><label for="start">Начална дата</label></th>
+                <td><input type="date" name="start" required></td>
             </tr>
             <tr>
-                <th><label for="reason"><?php _e('Причина', 'bushlyaka'); ?></label></th>
-                <td><input type="text" name="reason" class="regular-text"></td>
+                <th><label for="end">Крайна дата</label></th>
+                <td><input type="date" name="end" required></td>
+            </tr>
+            <tr>
+                <th><label for="reason">Причина</label></th>
+                <td><input type="text" name="reason"></td>
             </tr>
         </table>
-        <?php submit_button(__('Добави Blackout', 'bushlyaka')); ?>
+        <p><input type="submit" name="bush_add_blackout" class="button-primary" value="Добави"></p>
     </form>
 
-    <h2><?php _e('Списък с blackout периоди', 'bushlyaka'); ?></h2>
-    <table class="widefat">
+    <h2>Списък с blackout периоди</h2>
+    <table class="widefat fixed striped">
         <thead>
             <tr>
-                <th><?php _e('Начало', 'bushlyaka'); ?></th>
-                <th><?php _e('Край', 'bushlyaka'); ?></th>
-                <th><?php _e('Причина', 'bushlyaka'); ?></th>
-                <th><?php _e('Действия', 'bushlyaka'); ?></th>
+                <th>ID</th>
+                <th>Период</th>
+                <th>Причина</th>
+                <th>Действия</th>
             </tr>
         </thead>
         <tbody>
-        <?php
-        $rows = $wpdb->get_results("SELECT * FROM {$wpdb->prefix}bush_blackouts ORDER BY start DESC");
-        if ($rows) :
-            foreach ($rows as $row) : ?>
-                <tr>
-                    <td><?php echo esc_html($row->start); ?></td>
-                    <td><?php echo esc_html($row->end); ?></td>
-                    <td><?php echo esc_html($row->reason); ?></td>
-                    <td><a href="?page=bushlyak-blackouts&delete=<?php echo $row->id; ?>" onclick="return confirm('<?php _e('Сигурни ли сте?', 'bushlyaka'); ?>')"><?php _e('Изтрий', 'bushlyaka'); ?></a></td>
-                </tr>
-            <?php endforeach;
-        else : ?>
-            <tr><td colspan="4"><?php _e('Няма записи.', 'bushlyaka'); ?></td></tr>
-        <?php endif; ?>
+            <?php if ( $blackouts ) : ?>
+                <?php foreach ( $blackouts as $b ) : ?>
+                    <?php
+                    $start = date_i18n('d.m.Y', strtotime($b->start)) . ' 12:00';
+                    $end   = date_i18n('d.m.Y', strtotime($b->end))   . ' 12:00';
+                    ?>
+                    <tr>
+                        <td><?php echo intval($b->id); ?></td>
+                        <td><?php echo esc_html($start . ' – ' . $end); ?></td>
+                        <td><?php echo esc_html($b->reason); ?></td>
+                        <td>
+                            <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=bushlyak-blackouts&delete='.$b->id), 'bush_blackout_delete'); ?>" class="button" onclick="return confirm('Сигурни ли сте, че искате да изтриете този blackout период?');">Изтрий</a>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+            <?php else : ?>
+                <tr><td colspan="4">Няма въведени blackout периоди.</td></tr>
+            <?php endif; ?>
         </tbody>
     </table>
 </div>
-
-<script>
-jQuery(document).ready(function($){
-    if (typeof flatpickr !== 'undefined') {
-        flatpickr(".blackout-range", {
-            mode: "range",
-            dateFormat: "Y-m-d H:i:S",
-            enableTime: true,
-            appendTo: document.body // ✅ за да не се реже календара в админ
-        });
-    }
-});
-</script>
