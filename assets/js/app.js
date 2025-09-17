@@ -1,120 +1,100 @@
 jQuery(document).ready(function($) {
-    const picker = flatpickr("#daterange", {
-        mode: "range",
-        dateFormat: "Y-m-d",
-        minDate: "today",
-        inline: true,
-        onChange: function(selectedDates) {
-            if (selectedDates.length === 2) {
-                fetchAvailableSectors(selectedDates[0], selectedDates[1]);
-                updatePrice();
-            }
-        }
-    });
 
-    // Зареждане на методите за плащане
-    $.get(bushlyaka.restUrl + 'paymethods', {}, function(methods) {
-        let $pay = $("#payMethod");
-        $pay.empty().append('<option value="">-- Изберете метод --</option>');
-        methods.forEach(m => {
-            $pay.append(`<option value="${m.id}" data-desc="${m.instructions}">${m.name}</option>`);
+    // ✅ Flatpickr инициализация
+    if (typeof flatpickr !== 'undefined') {
+        flatpickr(".bush-date-range", {
+            mode: "range",
+            dateFormat: "Y-m-d",
+            inline: true,
+            minDate: "today",
+            onChange: function() { updatePrice(); }
         });
-    });
-
-    // Показване на описание при избор
-    $("#payMethod").on("change", function() {
-        let desc = $(this).find(":selected").data("desc") || "";
-        $("#payDescription").text(desc);
-    });
-
-    function fetchAvailableSectors(startDate, endDate) {
-        let start = startDate.toISOString().split('T')[0];
-        let end   = endDate.toISOString().split('T')[0];
-
-        $.get(bushlyaka.restUrl + 'available-sectors', { start, end }, function(res) {
-            let $sector = $("#sector");
-            $sector.empty();
-            if (res.available && res.available.length) {
-                res.available.forEach(s => {
-                    $sector.append(`<option value="${s}">Сектор ${s}</option>`);
-                });
-            } else {
-                $sector.append('<option value="">Няма свободни</option>');
-            }
-        });
+    } else {
+        console.error("flatpickr не е зареден!");
     }
 
-    function calculateDays(start, end) {
-        let s = new Date(start);
-        let e = new Date(end);
-        let diff = Math.ceil((e - s) / (1000 * 60 * 60 * 24));
+    // ✅ Избор на сектор
+    $(document).on('click', '.bush-sector', function() {
+        $('.bush-sector').removeClass('selected');
+        $(this).addClass('selected');
+        $('#bush-sector-input').val($(this).data('sector'));
+    });
 
-        if (s.getDay() === 5 && diff < 2) {
-            diff = 2;
-        }
-        return diff;
-    }
+    // ✅ Показване на инфо за метод на плащане
+    $('#bush-paymethod').on('change', function() {
+        let info = $(this).find(':selected').data('info') || '';
+        $('#bush-paymethod-info').text(info);
+    });
 
-    function updatePrice() {
-        let dates = $("#daterange").val().split(" to ");
-        if (!dates[0] || !dates[1]) return;
+    // ✅ Слушатели за промяна на брой рибари
+    $('[name="anglers"], [name="secondHasCard"]').on('change', updatePrice);
 
-        let start = dates[0];
-        let end   = dates[1];
-        let days  = calculateDays(start, end);
-
-        let anglers = $("#anglers").val();
-        let hasCard = $("#secondHasCard").is(":checked") ? 1 : 0;
-
-        $.get(bushlyaka.restUrl + 'pricing', {}, function(rules) {
-            let basePrice = 0;
-
-            rules.forEach(rule => {
-                if (parseInt(rule.anglers) === parseInt(anglers) &&
-                    parseInt(rule.secondHasCard) === hasCard) {
-                    basePrice = parseFloat(rule.price);
-                }
-            });
-
-            let total = basePrice * days;
-            $("#price").text(total ? total + " лв." : "—");
-        });
-    }
-
-    $("#anglers, #secondHasCard").on("change", updatePrice);
-
-    $("#bushlyakaBookingForm").on("submit", function(e) {
+    // ✅ Обработчик за изпращане на формата
+$(document).on('submit', '.bushlyaka-booking-form form', function(e) {
         e.preventDefault();
 
-        let dates = $("#daterange").val().split(" to ");
-        let data = {
-            start: dates[0],
-            end: dates[1],
-            sector: $("#sector").val(),
-            anglers: $("#anglers").val(),
-            secondHasCard: $("#secondHasCard").is(":checked") ? 1 : 0,
-            payMethod: $("#payMethod").val(),
-            notes: $("#notes").val(),
-            firstName: $("#firstName").val(),
-            lastName: $("#lastName").val(),
-            email: $("#email").val(),
-            phone: $("#phone").val()
-        };
+        let formData = $(this).serialize();
 
         $.ajax({
-            url: bushlyaka.restUrl + "bookings",
-            method: "POST",
-            data: data,
+            url: bushlyaka.restUrl + 'bookings',
+            method: 'POST',
+            data: formData,
+            beforeSend: function(xhr) {
+                xhr.setRequestHeader('X-WP-Nonce', bushlyaka.nonce);
+                $('.bush-error-global').hide().text('');
+            },
             success: function(res) {
-                if (res.success) {
-                    window.location.href = bushlyaka.redirectUrl + "?id=" + res.id;
-                } else {
-                    alert("Грешка: " + res.message);
+                alert(bushlyaka.messages.success);
+                if (res.id) {
+                    window.location.href = bushlyaka.redirectUrl + '?id=' + res.id;
                 }
             },
-            error: function(err) {
-                alert("Грешка при запис: " + err.responseJSON.message);
+            error: function(xhr) {
+                let msg = bushlyaka.messages.error;
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    msg = xhr.responseJSON.message;
+                }
+                $('.bush-error-global').show().text(msg);
             }
         });
     });
+
+    // ✅ Функция за калкулация на цената
+    function updatePrice() {
+        let dr = $('.bush-date-range').val();
+        if (!dr) return;
+
+        let parts = dr.split(' to ');
+        if (parts.length !== 2) return;
+
+        let start = parts[0].trim();
+        let end = parts[1].trim();
+        let anglers = parseInt($('[name="anglers"]').val()) || 1;
+        let secondHasCard = $('[name="secondHasCard"]').is(':checked');
+
+        $.ajax({
+            url: bushlyaka.restUrl + 'pricing',
+            method: 'GET',
+            success: function(prices) {
+                let s = new Date(start);
+                let e = new Date(end);
+                let ms = e - s;
+                let days = Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+
+                let total = 0;
+                if (anglers === 1) {
+                    total = prices.base * days;
+                } else if (anglers === 2 && secondHasCard) {
+                    total = (prices.base + prices.second_with_card) * days;
+                } else if (anglers === 2) {
+                    total = (prices.base + prices.second) * days;
+                }
+
+                $('.bush-price-estimate').text(total.toFixed(2) + ' лв.');
+            },
+            error: function(err) {
+                console.error("Грешка при зареждане на цените", err);
+            }
+        });
+    }
 });
