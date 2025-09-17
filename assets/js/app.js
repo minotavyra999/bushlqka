@@ -1,6 +1,6 @@
 jQuery(document).ready(function($) {
 
-    // Инициализация на flatpickr
+    // ✅ Flatpickr инициализация
     if (typeof flatpickr !== 'undefined') {
         flatpickr(".bush-date-range", {
             mode: "range",
@@ -13,24 +13,53 @@ jQuery(document).ready(function($) {
         console.error("flatpickr не е зареден!");
     }
 
-    // избор на сектор
+    // ✅ Избор на сектор
     $(document).on('click', '.bush-sector', function() {
-        console.log('Сектор кликнат:', $(this).data('sector'));
         $('.bush-sector').removeClass('selected');
         $(this).addClass('selected');
         $('#bush-sector-input').val($(this).data('sector'));
     });
 
-    // показване на информация за метода на плащане
+    // ✅ Показване на инфо за метод на плащане
     $('#bush-paymethod').on('change', function() {
         let info = $(this).find(':selected').data('info') || '';
         $('#bush-paymethod-info').text(info);
     });
 
-    // слушатели за смяна на брой рибари
+    // ✅ Слушатели за промяна на брой рибари
     $('[name="anglers"], [name="secondHasCard"]').on('change', updatePrice);
 
-    // функция за калкулация на цената
+    // ✅ Обработчик за изпращане на формата
+    $('.bushlyaka-booking-form form').on('submit', function(e) {
+        e.preventDefault();
+
+        let formData = $(this).serialize();
+
+        $.ajax({
+            url: bushlyaka.restUrl + 'bookings',
+            method: 'POST',
+            data: formData,
+            beforeSend: function(xhr) {
+                xhr.setRequestHeader('X-WP-Nonce', bushlyaka.nonce);
+                $('.bush-error-global').hide().text('');
+            },
+            success: function(res) {
+                alert(bushlyaka.messages.success);
+                if (res.id) {
+                    window.location.href = bushlyaka.redirectUrl + '?id=' + res.id;
+                }
+            },
+            error: function(xhr) {
+                let msg = bushlyaka.messages.error;
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    msg = xhr.responseJSON.message;
+                }
+                $('.bush-error-global').show().text(msg);
+            }
+        });
+    });
+
+    // ✅ Функция за калкулация на цената
     function updatePrice() {
         let dr = $('.bush-date-range').val();
         if (!dr) return;
