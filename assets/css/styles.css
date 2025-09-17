@@ -1,99 +1,40 @@
-/* ===========================
-   Bushlyaka Booking Styles
-   =========================== */
-
-/* CSS променливи за лесна промяна */
-:root {
-  --bush-primary: #2b7a78;
-  --bush-primary-hover: #205c5a;
-  --bush-secondary: #def2f1;
-  --bush-bg: #ffffff;
-  --bush-border: #cccccc;
-  --bush-danger: #d9534f;
-  --bush-font: "Helvetica Neue", Arial, sans-serif;
-
-  --bush-radius: 8px;
-  --bush-transition: 0.25s ease-in-out;
-}
-
-/* Основен контейнер */
+/* Контейнер на формата */
 .bushlyaka-booking-form {
-  max-width: 700px;
+  max-width: 600px;
   margin: 20px auto;
   padding: 20px;
-  background: var(--bush-bg);
-  border: 1px solid var(--bush-border);
-  border-radius: var(--bush-radius);
-  font-family: var(--bush-font);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+  border: 2px solid #ddd;
+  border-radius: 10px;
+  background: #fafafa;
+  font-family: Arial, sans-serif;
 }
 
-/* Заглавия */
+/* Заглавие */
 .bushlyaka-booking-form h2 {
-  font-size: 1.4rem;
-  margin-bottom: 15px;
-  color: var(--bush-primary);
-  font-weight: 600;
+  text-align: center;
+  margin-bottom: 20px;
+  color: #333;
 }
 
-/* Формови елементи */
+/* Полета */
 .bushlyaka-booking-form label {
   display: block;
-  margin-bottom: 6px;
-  font-weight: 500;
+  margin: 10px 0 5px;
+  font-weight: bold;
 }
 
 .bushlyaka-booking-form input,
 .bushlyaka-booking-form select,
 .bushlyaka-booking-form textarea {
   width: 100%;
-  padding: 10px;
-  border: 1px solid var(--bush-border);
-  border-radius: var(--bush-radius);
-  font-size: 1rem;
-  transition: border-color var(--bush-transition);
+  padding: 8px;
+  border: 1px solid #bbb;
+  border-radius: 5px;
+  box-sizing: border-box;
 }
 
-.bushlyaka-booking-form input:focus,
-.bushlyaka-booking-form select:focus,
-.bushlyaka-booking-form textarea:focus {
-  border-color: var(--bush-primary);
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(43, 122, 120, 0.2);
-}
-
-/* Бутоните */
-.bushlyaka-booking-form button {
-  display: inline-block;
-  background: var(--bush-primary);
-  color: #fff;
-  border: none;
-  padding: 12px 20px;
-  font-size: 1rem;
-  border-radius: var(--bush-radius);
-  cursor: pointer;
-  transition: background var(--bush-transition), transform var(--bush-transition);
-}
-
-.bushlyaka-booking-form button:hover {
-  background: var(--bush-primary-hover);
-  transform: translateY(-2px);
-}
-
-.bushlyaka-booking-form button:disabled {
-  background: #999;
-  cursor: not-allowed;
-  opacity: 0.7;
-  transform: none;
-}
-
-/* Danger бутон */
-.bushlyaka-booking-form .btn-danger {
-  background: var(--bush-danger);
-}
-
-.bushlyaka-booking-form .btn-danger:hover {
-  background: #c9302c;
+.bushlyaka-booking-form textarea {
+  min-height: 80px;
 }
 
 /* Сектори */
@@ -101,85 +42,75 @@
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 15px;
+  margin: 15px 0;
 }
 
 .bush-sector {
-  flex: 1 1 100px;
-  padding: 10px;
+  flex: 1 1 calc(33% - 10px);
   text-align: center;
-  border: 1px solid var(--bush-border);
-  border-radius: var(--bush-radius);
-  background: var(--bush-secondary);
+  padding: 10px;
+  border: 2px solid #0073aa;
+  border-radius: 6px;
   cursor: pointer;
-  transition: background var(--bush-transition), border var(--bush-transition);
+  background: #f1f9ff;
+  transition: background 0.2s, transform 0.2s;
 }
 
-.bush-sector.available:hover {
-  background: #cfeeea;
-  border-color: var(--bush-primary);
-}
-
-.bush-sector.unavailable {
-  background: #f8d7da;
-  color: #721c24;
-  cursor: not-allowed;
+.bush-sector:hover {
+  background: #e0f0ff;
+  transform: scale(1.05);
 }
 
 .bush-sector.selected {
-  background: var(--bush-primary);
-  color: #fff;
-  border-color: var(--bush-primary-hover);
+  background: #0073aa;
+  color: white;
+  font-weight: bold;
 }
 
-/* Стъпки навигация */
-.bush-step {
-  display: none;
+/* Цена */
+.bush-price-estimate {
+  font-weight: bold;
+  color: #0073aa;
+  font-size: 1.2em;
 }
 
-.bush-step.active {
-  display: block;
+/* Бутон */
+.bushlyaka-booking-form button {
+  margin-top: 15px;
+  width: 100%;
+  padding: 12px;
+  background: #0073aa;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background 0.3s;
 }
 
-/* Навигация */
-.bush-nav {
-  margin-top: 20px;
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
+.bushlyaka-booking-form button:hover {
+  background: #005f8a;
 }
 
-/* Flatpickr override */
-.flatpickr-calendar {
-  font-family: var(--bush-font);
-  border-radius: var(--bush-radius);
+.bushlyaka-booking-form button:disabled {
+  background: #aaa;
+  cursor: not-allowed;
 }
 
-/* Съобщения за грешки */
-.bush-error {
-  color: var(--bush-danger);
-  margin-top: 5px;
-  font-size: 0.9rem;
+/* Грешки */
+.bush-error-global {
+  background: #ffe0e0;
+  border: 1px solid #ff4d4d;
+  color: #b30000;
+  padding: 10px;
+  margin-bottom: 15px;
+  border-radius: 5px;
+  font-weight: bold;
 }
 
-/* ===========================
-   Responsive
-   =========================== */
-@media (max-width: 640px) {
-  .bushlyaka-booking-form {
-    padding: 15px;
-  }
-
-  .bushlyaka-booking-form h2 {
-    font-size: 1.2rem;
-  }
-
-  .bushlyaka-booking-form button {
-    width: 100%;
-    margin-top: 10px;
-  }
-
-  .bush-sectors {
-    flex-direction: column;
+/* Responsive */
+@media (max-width: 600px) {
+  .bush-sector {
+    flex: 1 1 100%;
   }
 }
