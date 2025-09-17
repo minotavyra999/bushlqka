@@ -1,13 +1,15 @@
 jQuery(document).ready(function($) {
-
-    // ✅ Flatpickr инициализация
+    // ✅ Flatpickr инициализация с поправка: календарът да се показва извън контейнера на desktop
     if (typeof flatpickr !== 'undefined') {
         flatpickr(".bush-date-range", {
             mode: "range",
             dateFormat: "Y-m-d",
             inline: true,
             minDate: "today",
-            onChange: function() { updatePrice(); }
+            appendTo: document.body,    // <--- добавено, за да не се реже календара
+            onChange: function() {
+                updatePrice();
+            }
         });
     } else {
         console.error("flatpickr не е зареден!");
@@ -26,13 +28,12 @@ jQuery(document).ready(function($) {
         $('#bush-paymethod-info').text(info);
     });
 
-    // ✅ Слушатели за промяна на брой рибари
+    // ✅ Слушатели за промяна на брой рибари или втора карта
     $('[name="anglers"], [name="secondHasCard"]').on('change', updatePrice);
 
     // ✅ Обработчик за изпращане на формата
-$(document).on('submit', '.bushlyaka-booking-form form', function(e) {
+    $(document).on('submit', '.bushlyaka-booking-form form', function(e) {
         e.preventDefault();
-
         let formData = $(this).serialize();
 
         $.ajax({
@@ -50,11 +51,18 @@ $(document).on('submit', '.bushlyaka-booking-form form', function(e) {
                 }
             },
             error: function(xhr) {
-                let msg = bushlyaka.messages.error;
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    msg = xhr.responseJSON.message;
+                // ✅ Добавена обработка при конфликт (HTTP 409)
+                if (xhr.status === 409) {
+                    // показвай конкретно съобщение за зает сектор
+                    let msg = "❌ Секторът е зает в този период (има одобрена резервация). Моля, изберете други дати или сектор.";
+                    $('.bush-error-global').show().text(msg);
+                } else {
+                    let msg = bushlyaka.messages.error;
+                    if (xhr.responseJSON && xhr.responseJSON.message) {
+                        msg = xhr.responseJSON.message;
+                    }
+                    $('.bush-error-global').show().text(msg);
                 }
-                $('.bush-error-global').show().text(msg);
             }
         });
     });
@@ -63,10 +71,8 @@ $(document).on('submit', '.bushlyaka-booking-form form', function(e) {
     function updatePrice() {
         let dr = $('.bush-date-range').val();
         if (!dr) return;
-
         let parts = dr.split(' to ');
         if (parts.length !== 2) return;
-
         let start = parts[0].trim();
         let end = parts[1].trim();
         let anglers = parseInt($('[name="anglers"]').val()) || 1;
@@ -80,7 +86,6 @@ $(document).on('submit', '.bushlyaka-booking-form form', function(e) {
                 let e = new Date(end);
                 let ms = e - s;
                 let days = Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
-
                 let total = 0;
                 if (anglers === 1) {
                     total = prices.base * days;
@@ -89,7 +94,6 @@ $(document).on('submit', '.bushlyaka-booking-form form', function(e) {
                 } else if (anglers === 2) {
                     total = (prices.base + prices.second) * days;
                 }
-
                 $('.bush-price-estimate').text(total.toFixed(2) + ' лв.');
             },
             error: function(err) {
