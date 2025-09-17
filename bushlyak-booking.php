@@ -32,12 +32,11 @@ class Bushlyak_Booking_Plugin {
     public static function on_activate() {
         require_once __DIR__ . '/includes/class-bushlyak-booking-db.php';
         Bushlyak_Booking_DB::create_tables();
-        // Може да се добавят seed данни тук ако липсват
     }
 
     /** При деактивиране */
     public static function on_deactivate() {
-        // Изтриване на cron задачи, кешове и др. ако има
+        // Тук може да чистим cron задачи, кешове и др.
     }
 
     /** Зареждане на ресурси */
@@ -46,7 +45,7 @@ class Bushlyak_Booking_Plugin {
         $css_file = plugin_dir_url( __FILE__ ) . 'assets/css/styles.css';
         $js_file  = plugin_dir_url( __FILE__ ) . 'assets/js/app.js';
 
-        // Ако има минифицирани файлове – използвай тях
+        // Ако имаме минифицирани файлове – използвай тях
         if ( file_exists( plugin_dir_path( __FILE__ ) . 'assets/css/styles.min.css' ) ) {
             $css_file = plugin_dir_url( __FILE__ ) . 'assets/css/styles.min.css';
         }
@@ -61,7 +60,7 @@ class Bushlyak_Booking_Plugin {
         wp_localize_script( 'bushlyak-booking', 'bushlyaka', [
             'restUrl'     => esc_url_raw( rest_url( 'bush/v1/' ) ),
             'nonce'       => wp_create_nonce( 'wp_rest' ),
-            'redirectUrl' => site_url( '/thanks' ), // може да стане опция
+            'redirectUrl' => site_url( '/thanks' ), // може да стане настройка
             'messages'    => [
                 'loading'   => __( 'Изпращане...', 'bushlyaka' ),
                 'success'   => __( 'Резервацията е изпратена успешно!', 'bushlyaka' ),
@@ -141,16 +140,161 @@ class Bushlyak_Booking_Plugin {
             __( 'Bushlyaka Booking', 'bushlyaka' ),
             'manage_options',
             'bushlyaka-booking',
-            [ __CLASS__, 'render_admin_page' ],
+            [ __CLASS__, 'render_bookings_page' ],
             'dashicons-calendar-alt'
+        );
+
+        add_submenu_page(
+            'bushlyaka-booking',
+            __( 'Резервации', 'bushlyaka' ),
+            __( 'Резервации', 'bushlyaka' ),
+            'manage_options',
+            'bushlyaka-booking',
+            [ __CLASS__, 'render_bookings_page' ]
+        );
+
+        add_submenu_page(
+            'bushlyaka-booking',
+            __( 'Цени', 'bushlyaka' ),
+            __( 'Цени', 'bushlyaka' ),
+            'manage_options',
+            'bushlyaka-booking-prices',
+            [ __CLASS__, 'render_prices_page' ]
+        );
+
+        add_submenu_page(
+            'bushlyaka-booking',
+            __( 'Blackout периоди', 'bushlyaka' ),
+            __( 'Blackout периоди', 'bushlyaka' ),
+            'manage_options',
+            'bushlyaka-booking-blackouts',
+            [ __CLASS__, 'render_blackouts_page' ]
+        );
+
+        add_submenu_page(
+            'bushlyaka-booking',
+            __( 'Методи за плащане', 'bushlyaka' ),
+            __( 'Методи за плащане', 'bushlyaka' ),
+            'manage_options',
+            'bushlyaka-booking-paymethods',
+            [ __CLASS__, 'render_paymethods_page' ]
+        );
+
+        add_submenu_page(
+            'bushlyaka-booking',
+            __( 'Настройки', 'bushlyaka' ),
+            __( 'Настройки', 'bushlyaka' ),
+            'manage_options',
+            'bushlyaka-booking-settings',
+            [ __CLASS__, 'render_settings_page' ]
         );
     }
 
-    /** Админ страница */
-    public static function render_admin_page() {
-        echo '<div class="wrap"><h1>Bushlyaka Booking</h1>';
-        echo '<p>' . __( 'Тук ще бъдат настройките и резервациите.', 'bushlyaka' ) . '</p>';
+    /** Страница: Резервации */
+    public static function render_bookings_page() {
+        global $wpdb;
+
+        // Действия (одобри, откажи, изтрий)
+        if ( isset( $_GET['action'], $_GET['booking_id'], $_GET['_wpnonce'] ) ) {
+            $booking_id = intval( $_GET['booking_id'] );
+            if ( wp_verify_nonce( $_GET['_wpnonce'], 'bush_booking_action_' . $booking_id ) ) {
+                switch ( $_GET['action'] ) {
+                    case 'approve':
+                        Bushlyak_Booking_DB::update_booking_status( $booking_id, 'approved' );
+                        add_settings_error( 'bushlyaka_booking', 'booking_updated', 'Резервацията е одобрена.', 'updated' );
+                        break;
+                    case 'reject':
+                        Bushlyak_Booking_DB::update_booking_status( $booking_id, 'rejected' );
+                        add_settings_error( 'bushlyaka_booking', 'booking_updated', 'Резервацията е отказана.', 'error' );
+                        break;
+                    case 'delete':
+                        Bushlyak_Booking_DB::delete_booking( $booking_id );
+                        add_settings_error( 'bushlyaka_booking', 'booking_deleted', 'Резервацията е изтрита.', 'error' );
+                        break;
+                }
+            }
+        }
+
+        settings_errors( 'bushlyaka_booking' );
+
+        $bookings = Bushlyak_Booking_DB::list_bookings(50);
+
+        echo '<div class="wrap"><h1>' . __( 'Резервации', 'bushlyaka' ) . '</h1>';
+
+        if ( ! empty( $bookings ) ) {
+            echo '<table class="widefat fixed striped"><thead><tr>';
+            echo '<th>ID</th><th>Сектор</th><th>От</th><th>До</th><th>Клиент</th><th>Телефон</th><th>Имейл</th><th>Статус</th><th>Действия</th>';
+            echo '</tr></thead><tbody>';
+            foreach ( $bookings as $b ) {
+                $approve_url = wp_nonce_url(
+                    admin_url( 'admin.php?page=bushlyaka-booking&action=approve&booking_id=' . $b->id ),
+                    'bush_booking_action_' . $b->id
+                );
+                $reject_url = wp_nonce_url(
+                    admin_url( 'admin.php?page=bushlyaka-booking&action=reject&booking_id=' . $b->id ),
+                    'bush_booking_action_' . $b->id
+                );
+                $delete_url = wp_nonce_url(
+                    admin_url( 'admin.php?page=bushlyaka-booking&action=delete&booking_id=' . $b->id ),
+                    'bush_booking_action_' . $b->id
+                );
+
+                echo '<tr>';
+                echo '<td>' . intval( $b->id ) . '</td>';
+                echo '<td>' . esc_html( $b->sector ) . '</td>';
+                echo '<td>' . esc_html( $b->start ) . '</td>';
+                echo '<td>' . esc_html( $b->end ) . '</td>';
+                echo '<td>' . esc_html( $b->client_first . ' ' . $b->client_last ) . '</td>';
+                echo '<td>' . esc_html( $b->client_phone ) . '</td>';
+                echo '<td>' . esc_html( $b->client_email ) . '</td>';
+                echo '<td>' . ucfirst( esc_html( $b->status ) ) . '</td>';
+                echo '<td>
+                    <a href="' . esc_url( $approve_url ) . '" class="button button-primary">Одобри</a> 
+                    <a href="' . esc_url( $reject_url ) . '" class="button">Откажи</a> 
+                    <a href="' . esc_url( $delete_url ) . '" class="button button-danger" onclick="return confirm(\'Сигурни ли сте?\')">Изтрий</a>
+                </td>';
+                echo '</tr>';
+            }
+            echo '</tbody></table>';
+        } else {
+            echo '<p>' . __( 'Няма резервации.', 'bushlyaka' ) . '</p>';
+        }
+
         echo '</div>';
+    }
+
+    /** Страница: Цени */
+    public static function render_prices_page() {
+        echo '<div class="wrap"><h1>' . __( 'Цени', 'bushlyaka' ) . '</h1>';
+        $prices = Bushlyak_Booking_DB::get_prices();
+        echo '<pre>'; print_r($prices); echo '</pre>';
+        echo '</div>';
+    }
+
+    /** Страница: Blackouts */
+    public static function render_blackouts_page() {
+        echo '<div class="wrap"><h1>' . __( 'Blackout периоди', 'bushlyaka' ) . '</h1>';
+        $blackouts = Bushlyak_Booking_DB::list_blackouts();
+        echo '<pre>'; print_r($blackouts); echo '</pre>';
+        echo '</div>';
+    }
+
+    /** Страница: Методи за плащане */
+    public static function render_paymethods_page() {
+        echo '<div class="wrap"><h1>' . __( 'Методи за плащане', 'bushlyaka' ) . '</h1>';
+        $methods = Bushlyak_Booking_DB::list_paymethods();
+        echo '<pre>'; print_r($methods); echo '</pre>';
+        echo '</div>';
+    }
+
+    /** Страница: Настройки */
+    public static function render_settings_page() {
+        echo '<div class="wrap"><h1>' . __( 'Настройки', 'bushlyaka' ) . '</h1>';
+        echo '<form method="post" action="options.php">';
+        settings_fields( 'bushlyaka_booking' );
+        do_settings_sections( 'bushlyaka_booking' );
+        submit_button();
+        echo '</form></div>';
     }
 }
 
