@@ -58,7 +58,18 @@ class Bushlyak_Booking_REST {
             return new WP_Error('db_error', $wpdb->last_error, ['status' => 500]);
         }
 
-        return ['success' => true, 'id' => $wpdb->insert_id];
+        $insert_id = $wpdb->insert_id;
+
+        // Взимаме информация за метода на плащане
+        $payTable = $wpdb->prefix . 'bush_paymethods';
+        $payInfo = $wpdb->get_row($wpdb->prepare("SELECT name, instructions FROM $payTable WHERE id = %d", intval($request['payMethod'])));
+
+        return [
+            'success' => true,
+            'id'      => $insert_id,
+            'payName' => $payInfo ? $payInfo->name : '',
+            'payInstructions' => $payInfo ? $payInfo->instructions : ''
+        ];
     }
 
     /**
