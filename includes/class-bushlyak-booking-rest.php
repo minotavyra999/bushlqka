@@ -58,7 +58,6 @@ if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
             $prices = Bushlyak_Booking_DB::get_prices();
             if ( ! $prices ) return 0;
 
-            // колко дни (24-часови периода)
             $days = 1;
             if ($start && $end) {
                 try {
@@ -133,10 +132,14 @@ if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
                 $params['end'] ?? ''
             );
 
+            // Изпращаме имейл
+            Bushlyak_Booking_Plugin::send_booking_email($booking_id);
+
             return [
-                'ok'        => true,
-                'bookingId' => $booking_id,
-                'price'     => $price
+                'ok'         => true,
+                'bookingId'  => $booking_id,
+                'price'      => $price,
+                'redirect'   => home_url('/booking-summary?booking=' . $booking_id),
             ];
         }
 
