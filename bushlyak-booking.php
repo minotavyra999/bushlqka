@@ -173,7 +173,6 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
             return ob_get_clean();
         }
 
-        // render_booking_summary(), send_booking_email(), admin_* → остават същите
         public static function render_booking_summary() { include plugin_dir_path( __FILE__ ) . 'summary.php'; }
         public static function send_booking_email($booking_id) { include plugin_dir_path( __FILE__ ) . 'email.php'; }
         public static function render_admin_dashboard() { echo '<div class="wrap"><h1>Bushlyak Booking</h1><p>Използвайте менюто за управление.</p></div>'; }
@@ -182,13 +181,25 @@ if ( ! class_exists( 'Bushlyak_Booking_Plugin' ) ) {
         public static function render_admin_payments() { include plugin_dir_path( __FILE__ ) . 'admin/admin-payments.php'; }
         public static function render_admin_blackouts() { include plugin_dir_path( __FILE__ ) . 'admin/admin-blackouts.php'; }
 
+        /** ✅ Променено: handle_approve_booking с проверка за конфликт */
         public static function handle_approve_booking() {
             if ( ! current_user_can('manage_options') ) wp_die('Not allowed');
             check_admin_referer('bush_booking_action');
             $id = intval($_GET['id']);
-            if ($id) Bushlyak_Booking_DB::update_booking_status($id, 'approved');
+            if ($id) {
+                $booking = Bushlyak_Booking_DB::get_booking($id);
+                if ( ! $booking ) {
+                    wp_die( __( 'Резервацията не е намерена.', 'bushlyaka' ) );
+                }
+                if ( Bushlyak_Booking_DB::has_conflict( $booking->start, $booking->end, $booking->sector, $booking->id ) ) {
+                    wp_die( __( 'Има вече одобрена резервация за този сектор в този период. Не може да се одобри.', 'bushlyaka' ) );
+                }
+                Bushlyak_Booking_DB::update_booking_status($id, 'approved');
+                Bushlyak_Booking_DB::reject_pending_overlaps( $booking->start, $booking->end, $booking->sector, $booking->id );
+            }
             wp_redirect( admin_url('admin.php?page=bushlyak-bookings') ); exit;
         }
+
         public static function handle_reject_booking() {
             if ( ! current_user_can('manage_options') ) wp_die('Not allowed');
             check_admin_referer('bush_booking_action');
