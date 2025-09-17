@@ -1,101 +1,74 @@
-/* === Оригиналните ти стилове за формата === */
+/* Основен стил */
 .bushlyaka-booking-form {
-    max-width: 600px;
+    max-width: 800px;
     margin: 0 auto;
-    background: #fff;
     padding: 20px;
+    background: #fff;
+    border: 1px solid #ddd;
     border-radius: 8px;
-    box-shadow: 0 0 10px rgba(0,0,0,0.1);
 }
 
-.bushlyaka-booking-form form {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
+/* Полета */
+.bush-field {
+    margin-bottom: 15px;
 }
 
-.bush-field label {
+/* Календари */
+.bush-date-range {
+    width: 100% !important;
     display: block;
-    margin-bottom: 5px;
-    font-weight: bold;
+    font-size: 16px;
+    padding: 10px;
 }
 
-.bush-field input[type="text"],
-.bush-field input[type="email"],
-.bush-field input[type="number"],
-.bush-field select,
-.bush-field textarea {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+.flatpickr-calendar {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin-top: 10px;
+}
+
+.flatpickr-days {
+    width: 100% !important;
+}
+
+.flatpickr-day {
+    max-width: none !important;
+    flex: 1 0 auto !important;
+}
+
+/* Сектори */
+.bush-sectors {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
 }
 
 .bush-sector {
-    display: inline-block;
+    background: #f0f8ff;
+    border: 1px solid #0073aa;
+    text-align: center;
     padding: 10px;
-    margin: 5px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+    border-radius: 6px;
     cursor: pointer;
-    background: #f9f9f9;
 }
 
 .bush-sector.selected {
     background: #0073aa;
     color: #fff;
-    border-color: #0073aa;
 }
 
+/* Цена */
 .bush-price {
+    margin-top: 15px;
     font-size: 18px;
     font-weight: bold;
 }
 
-button[type="submit"] {
-    background: #0073aa;
-    color: #fff;
-    padding: 10px 20px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-button[type="submit"]:hover {
-    background: #005177;
-}
-
-}
-/* Календарът да следва широчината на input-а и да запълва контейнера */
-.bush-date-range {
-  width: 100% !important;
-  box-sizing: border-box;
-}
-
-/* Inline flatpickr: full-width контейнер */
-.flatpickr-calendar.inline {
-  width: 100% !important;
-  max-width: 100% !important;
-  min-width: unset !important;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  margin-top: 8px;
-  box-shadow: none;
-}
-
-/* Да запълни с 7 равни колони (дните) */
-.flatpickr-days { width: 100% !important; }
-.flatpickr-days .dayContainer {
-  width: 100% !important;
-  max-width: 100% !important;
-  display: grid !important;
-  grid-template-columns: repeat(7, 1fr) !important;
-  grid-gap: 0 !important;
-}
-.flatpickr-day {
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0 !important;
-  height: 36px;
-  line-height: 36px;
+/* Грешки */
+.bush-error-global {
+    margin-top: 10px;
+    padding: 8px;
+    border: 1px solid red;
+    background: #ffe6e6;
+    color: red;
 }
