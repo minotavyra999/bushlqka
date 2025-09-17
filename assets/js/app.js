@@ -1,13 +1,13 @@
 jQuery(document).ready(function($) {
-    // Flatpickr с always open
     const picker = flatpickr("#daterange", {
         mode: "range",
         dateFormat: "Y-m-d",
         minDate: "today",
         inline: true,
-        onChange: function(selectedDates, dateStr) {
+        onChange: function(selectedDates) {
             if (selectedDates.length === 2) {
                 fetchAvailableSectors(selectedDates[0], selectedDates[1]);
+                updatePrice();
             }
         }
     });
@@ -29,29 +29,53 @@ jQuery(document).ready(function($) {
         });
     }
 
-    // Обновяване на цената
-    function updatePrice() {
-        let anglers = $("#anglers").val();
-        let hasCard = $("#secondHasCard").is(":checked") ? 1 : 0;
-        let dates   = $("#daterange").val().split(" to ");
+    function calculateDays(start, end) {
+        let s = new Date(start);
+        let e = new Date(end);
+        let diff = Math.ceil((e - s) / (1000 * 60 * 60 * 24));
 
+        // Ако стартира в петък → минимум 2 дни (петък–неделя)
+        if (s.getDay() === 5 && diff < 2) {
+            diff = 2;
+        }
+        return diff;
+    }
+
+    function updatePrice() {
+        let dates = $("#daterange").val().split(" to ");
         if (!dates[0] || !dates[1]) return;
 
-        $.get(bushlyaka.restUrl + 'pricing', { anglers, hasCard }, function(res) {
-            // TODO: логика за пресмятане на цената спрямо res
-            $("#price").text("Изчислена цена");
+        let start = dates[0];
+        let end   = dates[1];
+        let days  = calculateDays(start, end);
+
+        let anglers = $("#anglers").val();
+        let hasCard = $("#secondHasCard").is(":checked") ? 1 : 0;
+
+        $.get(bushlyaka.restUrl + 'pricing', {}, function(rules) {
+            let basePrice = 0;
+
+            rules.forEach(rule => {
+                if (parseInt(rule.anglers) === parseInt(anglers) &&
+                    parseInt(rule.secondHasCard) === hasCard) {
+                    basePrice = parseFloat(rule.price);
+                }
+            });
+
+            let total = basePrice * days;
+            $("#price").text(total ? total + " лв." : "—");
         });
     }
 
-    $("#anglers, #secondHasCard, #daterange").on("change", updatePrice);
+    $("#anglers, #secondHasCard").on("change", updatePrice);
 
-    // Изпращане на резервацията
     $("#bushlyakaBookingForm").on("submit", function(e) {
         e.preventDefault();
 
+        let dates = $("#daterange").val().split(" to ");
         let data = {
-            start: $("#daterange").val().split(" to ")[0],
-            end: $("#daterange").val().split(" to ")[1],
+            start: dates[0],
+            end: dates[1],
             sector: $("#sector").val(),
             anglers: $("#anglers").val(),
             secondHasCard: $("#secondHasCard").is(":checked") ? 1 : 0,
