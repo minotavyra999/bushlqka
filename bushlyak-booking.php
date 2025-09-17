@@ -2,35 +2,34 @@
 /**
  * Plugin Name: Bushlyak Booking
  * Description: Система за резервации на Bushlyak.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Ivaylo
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-// Зареждаме нужните класове
 require_once plugin_dir_path(__FILE__) . 'includes/class-bushlyak-booking-db.php';
 require_once plugin_dir_path(__FILE__) . 'includes/class-bushlyak-booking-rest.php';
 
 // Зареждаме CSS и JS
 add_action('wp_enqueue_scripts', function() {
-    wp_enqueue_style('bushlyaka-styles', plugin_dir_url(__FILE__) . 'assets/css/styles.css', [], '1.0');
+    wp_enqueue_style('bushlyaka-styles', plugin_dir_url(__FILE__) . 'assets/css/styles.css', [], '1.1.0');
     wp_enqueue_script('flatpickr', 'https://cdn.jsdelivr.net/npm/flatpickr', [], null, true);
-    wp_enqueue_script('bushlyaka-app', plugin_dir_url(__FILE__) . 'assets/js/app.js', ['jquery','flatpickr'], '1.0', true);
+    wp_enqueue_script('bushlyaka-app', plugin_dir_url(__FILE__) . 'assets/js/app.js', ['jquery','flatpickr'], '1.1.0', true);
     wp_localize_script('bushlyaka-app', 'bushlyaka', [
         'restUrl'     => esc_url_raw( rest_url('bushlyaka/v1/') ),
         'redirectUrl' => site_url('/booking-summary')
     ]);
 });
 
-// Шорткод за форма за резервации
+// Шорткод за форма
 add_shortcode('bushlyaka_booking', function() {
     ob_start();
     include plugin_dir_path(__FILE__) . 'summary.php';
     return ob_get_clean();
 });
 
-// Админ менюта
+// Админ меню
 add_action('admin_menu', function() {
     add_menu_page(
         'Bushlyak Booking',
@@ -91,7 +90,7 @@ add_action('admin_menu', function() {
         'bushlyaka-booking',
         'Настройки',
         'Настройки',
-        'manage_options', // 👈 настройки остават само за администратор
+        'manage_options',
         'bushlyaka-booking-settings',
         function() {
             include plugin_dir_path(__FILE__) . 'admin/admin-settings.php';
@@ -99,7 +98,7 @@ add_action('admin_menu', function() {
     );
 });
 
-// Зареждаме REST API
+// REST API
 add_action('rest_api_init', function() {
     $rest = new Bushlyak_Booking_REST();
     $rest->register_routes();
