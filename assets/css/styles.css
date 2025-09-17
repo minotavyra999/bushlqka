@@ -1,0 +1,128 @@
+/* ==== СЕКТОРИ – модерна визия ==== */
+:root {
+  --bush-primary: #2563eb;           /* синьо */
+  --bush-primary-600: #1d4ed8;
+  --bush-primary-50: #eff6ff;
+  --bush-surface: #ffffff;
+  --bush-muted: #6b7280;
+  --bush-border: #e5e7eb;
+  --bush-danger: #ef4444;
+  --bush-shadow: 0 8px 24px rgba(0,0,0,.08);
+}
+
+.bush-sectors {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0,1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+@media (max-width: 900px) {
+  .bush-sectors { grid-template-columns: repeat(3, minmax(0,1fr)); }
+}
+@media (max-width: 640px) {
+  .bush-sectors { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+
+.bush-sector {
+  position: relative;
+  display: flex;
+  align-items: center; justify-content: center;
+  min-height: 70px;
+  border-radius: 14px;
+  border: 1px solid var(--bush-border);
+  background: var(--bush-surface);
+  box-shadow: 0 2px 10px rgba(0,0,0,.04);
+  cursor: pointer;
+  user-select: none;
+  padding: 12px;
+  font-weight: 600;
+  color: #111827;
+  transition: transform .12s ease, box-shadow .2s ease, border-color .15s ease, background-color .15s ease;
+  outline: none;
+}
+
+.bush-sector:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--bush-shadow);
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.bush-sector:active {
+  transform: translateY(0);
+  box-shadow: 0 3px 14px rgba(0,0,0,.12) inset;
+}
+
+.bush-sector:focus-visible {
+  box-shadow: 0 0 0 3px rgba(37,99,235,.25), var(--bush-shadow);
+}
+
+/* Номерът на сектора по-„баджов“ */
+.bush-sector::before {
+  content: "№";
+  position: absolute;
+  left: 10px; top: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--bush-muted);
+  opacity: .8;
+}
+
+/* Селектнат сектор */
+.bush-sector.selected {
+  border-color: var(--bush-primary);
+  background: var(--bush-primary-50);
+  color: var(--bush-primary-600);
+  box-shadow: 0 0 0 2px var(--bush-primary) inset, 0 10px 24px rgba(37,99,235,.15);
+}
+
+/* Недостъпен сектор */
+.bush-sector.unavailable,
+.bush-sector.unavailable:hover,
+.bush-sector.unavailable:active {
+  background: #f3f4f6;
+  color: #9ca3af;
+  border-color: #e5e7eb;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* Малък статус-чип */
+.bush-sector .chip {
+  position: absolute;
+  right: 10px; top: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .2px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #111827;
+}
+.bush-sector.selected .chip {
+  border-color: rgba(37,99,235,.35);
+  background: #fff;
+  color: var(--bush-primary-600);
+}
+.bush-sector.unavailable .chip {
+  border-color: #e5e7eb;
+  background: #f3f4f6;
+  color: #9ca3af;
+}
+
+/* Текст вътре */
+.bush-sector span.label {
+  font-size: 16px;
+}
+.bush-sector small.sub {
+  display: block;
+  font-size: 12px;
+  color: var(--bush-muted);
+  margin-top: 2px;
+}
+
+/* Контейнерни стилове */
+.bush-hint { color: var(--bush-muted); }
