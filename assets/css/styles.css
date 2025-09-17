@@ -113,4 +113,19 @@
   .bush-sector {
     flex: 1 1 100%;
   }
+  .bush-sector {
+    display:inline-block;
+    padding:6px 10px;
+    border:1px solid #ccc;
+    margin:3px;
+    cursor:pointer;
+    border-radius:4px;
 }
+.bush-sector.selected {
+    background:#006400;
+    color:#fff;
+    border-color:#004d00;
+}
+
+}
+
