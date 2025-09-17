@@ -22,6 +22,13 @@ class Bushlyak_Booking_REST {
             'callback' => [ __CLASS__, 'create_booking' ],
             'permission_callback' => '__return_true',
         ]);
+
+        // GET методи на плащане
+        register_rest_route( 'bush/v1', '/paymethods', [
+            'methods'  => 'GET',
+            'callback' => [ __CLASS__, 'get_paymethods' ],
+            'permission_callback' => '__return_true',
+        ]);
     }
 
     /** Връща цените от таблицата bush_prices */
@@ -39,6 +46,23 @@ class Bushlyak_Booking_REST {
         return $prices;
     }
 
+    /** Връща методите на плащане от таблицата bush_paymethods */
+    public static function get_paymethods( $request ) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'bush_paymethods';
+
+        $rows = $wpdb->get_results("SELECT id, method_name, method_note FROM $table ORDER BY id ASC", ARRAY_A);
+
+        if ( ! $rows ) {
+            return [
+                [ 'id' => 1, 'method_name' => 'Банков превод', 'method_note' => 'Изпратете сумата по сметка IBAN: BG00XXXX1234, Титуляр: Яз. Бушляк' ],
+                [ 'id' => 2, 'method_name' => 'Revolut', 'method_note' => 'Изпратете сумата на номер 0893282032323' ]
+            ];
+        }
+
+        return $rows;
+    }
+
     /** Създава резервация */
     public static function create_booking( $request ) {
         global $wpdb;
@@ -50,11 +74,11 @@ class Bushlyak_Booking_REST {
 
         if ($range) {
             $parts = explode(' to ', $range);
-            $start = !empty($parts[0]) ? $parts[0] . ' 12:00:00' : '';
-            $end   = !empty($parts[1]) ? $parts[1] . ' 12:00:00' : $start;
+            $start = !empty($parts[0]) ? $parts[0] : '';
+            $end   = !empty($parts[1]) ? $parts[1] : $start;
         } else {
-            $start = isset($request['start']) ? sanitize_text_field($request['start']) . ' 12:00:00' : '';
-            $end   = isset($request['end'])   ? sanitize_text_field($request['end'])   . ' 12:00:00' : '';
+            $start = sanitize_text_field( $request['start'] ?? '' );
+            $end   = sanitize_text_field( $request['end']   ?? '' );
         }
 
         if ( ! $start || ! $end ) {
@@ -81,6 +105,7 @@ class Bushlyak_Booking_REST {
             'end'           => $end,
             'sector'        => $sector,
             'anglers'       => intval( $request['anglers'] ),
+            'secondHasCard' => ! empty($request['secondHasCard']) ? 1 : 0,
             'client_first'  => sanitize_text_field( $request['firstName'] ),
             'client_last'   => sanitize_text_field( $request['lastName'] ),
             'client_email'  => sanitize_email( $request['email'] ),
@@ -130,3 +155,5 @@ class Bushlyak_Booking_REST {
         return $total;
     }
 }
+
+Bushlyak_Booking_REST::init();
