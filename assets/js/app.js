@@ -1,100 +1,103 @@
 jQuery(document).ready(function($) {
 
-    // ✅ Flatpickr инициализация
-    if (typeof flatpickr !== 'undefined') {
-        flatpickr(".bush-date-range", {
-            mode: "range",
-            dateFormat: "Y-m-d",
-            inline: true,
-            minDate: "today",
-            onChange: function() { updatePrice(); }
-        });
-    } else {
-        console.error("flatpickr не е зареден!");
+    let pricingData = null;
+
+    // Взимаме цените от REST API
+    $.get(bushlyaka.restUrl + 'pricing', function(data) {
+        pricingData = data;
+        console.log("Цени заредени:", pricingData);
+        updatePrice();
+    });
+
+    // Flatpickr за избор на дати
+    flatpickr("#daterange", {
+        mode: "range",
+        dateFormat: "Y-m-d",
+        minDate: "today",
+        onClose: function(selectedDates) {
+            if (selectedDates.length === 1) {
+                const start = selectedDates[0];
+                const day = start.getDay(); // 0=Неделя, 5=Петък
+                if (day === 5) {
+                    const sunday = new Date(start);
+                    sunday.setDate(start.getDate() + 2); // Петък +2 дни = Неделя
+                    this.setDate([start, sunday], true);
+                }
+            }
+            updatePrice();
+        }
+    });
+
+    // Обновяване на цената
+    function updatePrice() {
+        if (!pricingData) return;
+
+        const daterange = $('#daterange').val();
+        if (!daterange || !daterange.includes(" to ")) {
+            $('#price').text('—');
+            return;
+        }
+
+        const [start, end] = daterange.split(" to ");
+        const anglers = parseInt($('#anglers').val()) || 1;
+        const secondHasCard = $('#secondHasCard').is(':checked');
+
+        const s = new Date(start);
+        const e = new Date(end);
+        const days = Math.max(1, Math.ceil((e - s) / (1000 * 60 * 60 * 24)));
+
+        let total = 0;
+        if (anglers === 1) {
+            total = pricingData.base * days;
+        } else if (anglers === 2 && secondHasCard) {
+            total = (pricingData.base + pricingData.second_with_card) * days;
+        } else {
+            total = (pricingData.base + pricingData.second) * days;
+        }
+
+        $('#price').text(total + ' лв.');
     }
 
-    // ✅ Избор на сектор
-    $(document).on('click', '.bush-sector', function() {
-        $('.bush-sector').removeClass('selected');
-        $(this).addClass('selected');
-        $('#bush-sector-input').val($(this).data('sector'));
-    });
+    // Обновяване при промяна на броя рибари или чекбокса
+    $('#anglers, #secondHasCard').on('change', updatePrice);
 
-    // ✅ Показване на инфо за метод на плащане
-    $('#bush-paymethod').on('change', function() {
-        let info = $(this).find(':selected').data('info') || '';
-        $('#bush-paymethod-info').text(info);
-    });
-
-    // ✅ Слушатели за промяна на брой рибари
-    $('[name="anglers"], [name="secondHasCard"]').on('change', updatePrice);
-
-    // ✅ Обработчик за изпращане на формата
-$(document).on('submit', '.bushlyaka-booking-form form', function(e) {
+    // Изпращане на формата AJAX
+    $(document).on('submit', '.bushlyaka-booking-form form', function(e) {
         e.preventDefault();
 
-        let formData = $(this).serialize();
+        const daterange = $('#daterange').val().split(" to ");
+        const start = daterange[0] || '';
+        const end = daterange[1] || '';
+
+        const data = {
+            start: start,
+            end: end,
+            sector: $('#sector').val(),
+            anglers: $('#anglers').val(),
+            secondHasCard: $('#secondHasCard').is(':checked') ? 1 : 0,
+            payMethod: $('#payMethod').val(),
+            notes: $('#notes').val(),
+            firstName: $('#firstName').val(),
+            lastName: $('#lastName').val(),
+            email: $('#email').val(),
+            phone: $('#phone').val()
+        };
+
+        console.log("Изпращаме резервация:", data);
 
         $.ajax({
             url: bushlyaka.restUrl + 'bookings',
             method: 'POST',
-            data: formData,
-            beforeSend: function(xhr) {
-                xhr.setRequestHeader('X-WP-Nonce', bushlyaka.nonce);
-                $('.bush-error-global').hide().text('');
-            },
+            data: data,
             success: function(res) {
-                alert(bushlyaka.messages.success);
-                if (res.id) {
-                    window.location.href = bushlyaka.redirectUrl + '?id=' + res.id;
-                }
+                console.log("Резервация успешна:", res);
+                window.location.href = bushlyaka.redirectUrl + '?id=' + res.id;
             },
-            error: function(xhr) {
-                let msg = bushlyaka.messages.error;
-                if (xhr.responseJSON && xhr.responseJSON.message) {
-                    msg = xhr.responseJSON.message;
-                }
-                $('.bush-error-global').show().text(msg);
+            error: function(err) {
+                console.error("Грешка при резервация:", err);
+                alert("Възникна грешка при изпращане на резервацията.");
             }
         });
     });
 
-    // ✅ Функция за калкулация на цената
-    function updatePrice() {
-        let dr = $('.bush-date-range').val();
-        if (!dr) return;
-
-        let parts = dr.split(' to ');
-        if (parts.length !== 2) return;
-
-        let start = parts[0].trim();
-        let end = parts[1].trim();
-        let anglers = parseInt($('[name="anglers"]').val()) || 1;
-        let secondHasCard = $('[name="secondHasCard"]').is(':checked');
-
-        $.ajax({
-            url: bushlyaka.restUrl + 'pricing',
-            method: 'GET',
-            success: function(prices) {
-                let s = new Date(start);
-                let e = new Date(end);
-                let ms = e - s;
-                let days = Math.max(1, Math.ceil(ms / (1000 * 60 * 60 * 24)));
-
-                let total = 0;
-                if (anglers === 1) {
-                    total = prices.base * days;
-                } else if (anglers === 2 && secondHasCard) {
-                    total = (prices.base + prices.second_with_card) * days;
-                } else if (anglers === 2) {
-                    total = (prices.base + prices.second) * days;
-                }
-
-                $('.bush-price-estimate').text(total.toFixed(2) + ' лв.');
-            },
-            error: function(err) {
-                console.error("Грешка при зареждане на цените", err);
-            }
-        });
-    }
 });
