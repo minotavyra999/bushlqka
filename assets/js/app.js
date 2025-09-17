@@ -30,7 +30,7 @@ jQuery(document).ready(function($) {
     $('[name="anglers"], [name="secondHasCard"]').on('change', updatePrice);
 
     // ✅ Обработчик за изпращане на формата
-    $('.bushlyaka-booking-form form').on('submit', function(e) {
+$(document).on('submit', '.bushlyaka-booking-form form', function(e) {
         e.preventDefault();
 
         let formData = $(this).serialize();
