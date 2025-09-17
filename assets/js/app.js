@@ -1,9 +1,11 @@
 jQuery(document).ready(function($) {
 
+    console.log("app.js loaded");
     let pricingData = null;
 
     // Взимаме цените
     $.get(bushlyaka.restUrl + 'pricing', function(data) {
+        console.log("Pricing:", data);
         pricingData = data;
         updatePrice();
     });
@@ -14,10 +16,11 @@ jQuery(document).ready(function($) {
         dateFormat: "Y-m-d",
         minDate: "today",
         onClose: function(selectedDates) {
+            console.log("Dates selected:", selectedDates);
             if (selectedDates.length === 1) {
                 const start = selectedDates[0];
                 const day = start.getDay();
-                if (day === 5) {
+                if (day === 5) { // петък
                     const sunday = new Date(start);
                     sunday.setDate(start.getDate() + 2);
                     this.setDate([start, sunday], true);
@@ -34,8 +37,10 @@ jQuery(document).ready(function($) {
         if (!daterange || !daterange.includes(" to ")) return;
 
         const [start, end] = daterange.split(" to ");
+        console.log("Loading available sectors for:", start, end);
 
         $.get(bushlyaka.restUrl + 'available-sectors', { start: start, end: end }, function(sectors) {
+            console.log("Available sectors:", sectors);
             const $sector = $('#sector');
             $sector.empty();
             $sector.append('<option value="">-- Изберете сектор --</option>');
@@ -82,8 +87,9 @@ jQuery(document).ready(function($) {
     $('#anglers, #secondHasCard').on('change', updatePrice);
 
     // Изпращане на формата
-    $(document).on('submit', '.bushlyaka-booking-form form', function(e) {
+    $(document).on('submit', '#bushlyakaBookingForm', function(e) {
         e.preventDefault();
+        console.log("Form submit");
 
         const daterange = $('#daterange').val().split(" to ");
         const start = daterange[0] || '';
@@ -108,6 +114,7 @@ jQuery(document).ready(function($) {
             method: 'POST',
             data: data,
             success: function(res) {
+                console.log("Booking success:", res);
                 window.location.href = bushlyaka.redirectUrl + '?id=' + res.id;
             },
             error: function(err) {
