@@ -3,207 +3,149 @@ if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-if ( ! class_exists( 'Bushlyak_Booking_DB' ) ) {
+if ( ! class_exists( 'Bushlyak_Booking_REST' ) ) {
 
-    class Bushlyak_Booking_DB {
+    class Bushlyak_Booking_REST {
 
-        /** Създаване на таблици */
-        public static function create_tables() {
-            global $wpdb;
-            $charset_collate = $wpdb->get_charset_collate();
+        public static function init() {
+            add_action( 'rest_api_init', [ __CLASS__, 'register_routes' ] );
+        }
 
-            require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        public static function register_routes() {
+            $namespace = 'bush/v1';
 
-            $tables = [];
+            register_rest_route( $namespace, '/pricing', [
+                'methods'  => 'GET',
+                'callback' => [ __CLASS__, 'get_pricing' ],
+                'permission_callback' => '__return_true',
+            ]);
 
-            // Резервации
-            $tables[] = "CREATE TABLE {$wpdb->prefix}bush_bookings (
-                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-                start DATETIME NOT NULL,
-                end DATETIME NOT NULL,
-                sector VARCHAR(50) NOT NULL,
-                anglers INT NOT NULL DEFAULT 1,
-                client_first VARCHAR(100) NOT NULL,
-                client_last VARCHAR(100) NOT NULL,
-                client_email VARCHAR(100) NOT NULL,
-                client_phone VARCHAR(50) NOT NULL,
-                notes TEXT,
-                status VARCHAR(20) NOT NULL DEFAULT 'pending',
-                pay_method VARCHAR(50),
-                pay_instructions TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                KEY idx_period (start, end),
-                KEY idx_sector (sector)
-            ) $charset_collate;";
+            register_rest_route( $namespace, '/availability', [
+                'methods'  => 'POST',
+                'callback' => [ __CLASS__, 'post_availability' ],
+                'permission_callback' => [ __CLASS__, 'verify_nonce' ],
+            ]);
 
-            // Цени
-            $tables[] = "CREATE TABLE {$wpdb->prefix}bush_prices (
-                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-                valid_from DATE NOT NULL,
-                base DECIMAL(10,2) NOT NULL,
-                second DECIMAL(10,2) NOT NULL,
-                second_with_card DECIMAL(10,2) NOT NULL,
-                PRIMARY KEY (id)
-            ) $charset_collate;";
+            register_rest_route( $namespace, '/bookings', [
+                'methods'  => 'POST',
+                'callback' => [ __CLASS__, 'post_booking' ],
+                'permission_callback' => [ __CLASS__, 'verify_nonce' ],
+            ]);
 
-            // Плащания
-            $tables[] = "CREATE TABLE {$wpdb->prefix}bush_payments (
-                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-                booking_id BIGINT UNSIGNED NOT NULL,
-                amount DECIMAL(10,2) NOT NULL,
-                method VARCHAR(50) NOT NULL,
-                reference VARCHAR(100),
-                received_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                PRIMARY KEY (id),
-                KEY idx_booking (booking_id)
-            ) $charset_collate;";
+            register_rest_route( $namespace, '/blackouts', [
+                'methods'  => 'GET',
+                'callback' => [ __CLASS__, 'get_blackouts' ],
+                'permission_callback' => '__return_true',
+            ]);
 
-            // Blackouts
-            $tables[] = "CREATE TABLE {$wpdb->prefix}bush_blackouts (
-                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-                start DATE NOT NULL,
-                end DATE NOT NULL,
-                reason VARCHAR(200),
-                PRIMARY KEY (id)
-            ) $charset_collate;";
+            register_rest_route( $namespace, '/payments/methods', [
+                'methods'  => 'GET',
+                'callback' => [ __CLASS__, 'get_paymethods' ],
+                'permission_callback' => '__return_true',
+            ]);
+        }
 
-            // Методи за плащане
-            $tables[] = "CREATE TABLE {$wpdb->prefix}bush_paymethods (
-                id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-                name VARCHAR(100) NOT NULL,
-                instructions TEXT,
-                PRIMARY KEY (id)
-            ) $charset_collate;";
-
-            foreach ( $tables as $sql ) {
-                dbDelta( $sql );
+        /** Проверка на nonce */
+        public static function verify_nonce( $request ) {
+            $nonce = $request->get_header( 'X-WP-Nonce' );
+            if ( ! wp_verify_nonce( $nonce, 'wp_rest' ) ) {
+                return new WP_Error( 'forbidden', 'Невалиден или липсващ nonce.', [ 'status' => 403 ] );
             }
+            return true;
+        }
+
+        /** Цени */
+        public static function get_pricing( $request ) {
+            return Bushlyak_Booking_DB::get_prices();
+        }
+
+        /** Проверка на заетост */
+        public static function post_availability( $request ) {
+            $params = $request->get_json_params();
+            $start = sanitize_text_field( $params['start'] ?? '' );
+            $end   = sanitize_text_field( $params['end'] ?? '' );
+
+            if ( empty( $start ) || empty( $end ) ) {
+                return new WP_Error( 'invalid_request', 'Липсва начален или краен час.', [ 'status' => 400 ] );
+            }
+
+            $unavailable = Bushlyak_Booking_DB::find_unavailable_sectors( $start, $end );
+            return [ 'unavailable' => $unavailable ];
         }
 
         /** Създаване на резервация */
-        public static function create_booking( $data ) {
-            global $wpdb;
+        public static function post_booking( $request ) {
+            $params = $request->get_json_params();
 
-            $start  = sanitize_text_field( $data['start'] ?? '' );
-            $end    = sanitize_text_field( $data['end'] ?? '' );
-            $sector = sanitize_text_field( $data['sector'] ?? '' );
-
-            if ( empty( $start ) || empty( $end ) ) {
-                return false;
+            $required = [ 'start', 'end', 'sector', 'anglers', 'client' ];
+            foreach ( $required as $field ) {
+                if ( empty( $params[ $field ] ) ) {
+                    return new WP_Error( 'missing_field', "Полето {$field} е задължително.", [ 'status' => 400 ] );
+                }
             }
 
-            // Проверка дали секторът е свободен
-            $conflicts = self::find_unavailable_sectors( $start, $end );
+            $start   = sanitize_text_field( $params['start'] );
+            $end     = sanitize_text_field( $params['end'] );
+            $sector  = sanitize_text_field( $params['sector'] );
+            $anglers = intval( $params['anglers'] );
+
+            $client = [
+                'firstName' => sanitize_text_field( $params['client']['firstName'] ?? '' ),
+                'lastName'  => sanitize_text_field( $params['client']['lastName'] ?? '' ),
+                'email'     => sanitize_email( $params['client']['email'] ?? '' ),
+                'phone'     => sanitize_text_field( $params['client']['phone'] ?? '' ),
+            ];
+
+            if ( empty( $client['firstName'] ) || empty( $client['lastName'] ) ) {
+                return new WP_Error( 'invalid_client', 'Моля въведете име и фамилия.', [ 'status' => 400 ] );
+            }
+            if ( ! is_email( $client['email'] ) ) {
+                return new WP_Error( 'invalid_email', 'Невалиден имейл адрес.', [ 'status' => 400 ] );
+            }
+            if ( ! preg_match( '/^[0-9+\-\s]{6,20}$/', $client['phone'] ) ) {
+                return new WP_Error( 'invalid_phone', 'Невалиден телефонен номер.', [ 'status' => 400 ] );
+            }
+
+            $conflicts = Bushlyak_Booking_DB::find_unavailable_sectors( $start, $end );
             if ( in_array( $sector, $conflicts, true ) ) {
-                return false;
+                return new WP_Error( 'conflict', 'Избраният сектор е вече зает.', [ 'status' => 409 ] );
             }
 
-            $inserted = $wpdb->insert(
-                "{$wpdb->prefix}bush_bookings",
-                [
-                    'start'            => $start,
-                    'end'              => $end,
-                    'sector'           => $sector,
-                    'anglers'          => intval( $data['anglers'] ?? 1 ),
-                    'client_first'     => sanitize_text_field( $data['client']['firstName'] ?? '' ),
-                    'client_last'      => sanitize_text_field( $data['client']['lastName'] ?? '' ),
-                    'client_email'     => sanitize_email( $data['client']['email'] ?? '' ),
-                    'client_phone'     => sanitize_text_field( $data['client']['phone'] ?? '' ),
-                    'notes'            => sanitize_textarea_field( $data['notes'] ?? '' ),
-                    'status'           => 'pending',
-                    'pay_method'       => sanitize_text_field( $data['pay_method'] ?? '' ),
-                    'pay_instructions' => sanitize_textarea_field( $data['pay_instructions'] ?? '' ),
-                ],
-                [ '%s','%s','%s','%d','%s','%s','%s','%s','%s','%s','%s' ]
-            );
+            $booking_id = Bushlyak_Booking_DB::create_booking([
+                'start'  => $start,
+                'end'    => $end,
+                'sector' => $sector,
+                'anglers'=> $anglers,
+                'client' => $client,
+                'notes'  => sanitize_textarea_field( $params['notes'] ?? '' ),
+                'pay_method'      => sanitize_text_field( $params['payMethodId'] ?? '' ),
+                'pay_instructions'=> sanitize_textarea_field( $params['payInstructions'] ?? '' ),
+            ]);
 
-            return $inserted ? $wpdb->insert_id : false;
-        }
-
-        /** Смяна на статус */
-        public static function update_booking_status( $id, $status ) {
-            global $wpdb;
-            return $wpdb->update(
-                "{$wpdb->prefix}bush_bookings",
-                [ 'status' => sanitize_text_field( $status ) ],
-                [ 'id' => intval( $id ) ],
-                [ '%s' ],
-                [ '%d' ]
-            );
-        }
-
-        /** Изтриване на резервация */
-        public static function delete_booking( $id ) {
-            global $wpdb;
-            $id = intval( $id );
-            $wpdb->delete( "{$wpdb->prefix}bush_payments", [ 'booking_id' => $id ], [ '%d' ] );
-            return $wpdb->delete( "{$wpdb->prefix}bush_bookings", [ 'id' => $id ], [ '%d' ] );
-        }
-
-        /** Добавяне на плащане */
-        public static function add_payment( $booking_id, $amount, $method, $reference = '' ) {
-            global $wpdb;
-            $inserted = $wpdb->insert(
-                "{$wpdb->prefix}bush_payments",
-                [
-                    'booking_id' => intval( $booking_id ),
-                    'amount'     => floatval( $amount ),
-                    'method'     => sanitize_text_field( $method ),
-                    'reference'  => sanitize_text_field( $reference ),
-                ],
-                [ '%d','%f','%s','%s' ]
-            );
-
-            if ( $inserted ) {
-                self::update_booking_status( $booking_id, 'paid' );
-                return $wpdb->insert_id;
+            if ( ! $booking_id ) {
+                return new WP_Error( 'db_error', 'Неуспешно създаване на резервация.', [ 'status' => 500 ] );
             }
-            return false;
-        }
 
-        /** Търсене на заети сектори */
-        public static function find_unavailable_sectors( $start, $end ) {
-            global $wpdb;
-            $sql = $wpdb->prepare(
-                "SELECT DISTINCT sector
-                 FROM {$wpdb->prefix}bush_bookings
-                 WHERE status IN ('pending','approved','paid')
-                 AND start < %s
-                 AND end > %s",
-                $end, $start
-            );
-            return $wpdb->get_col( $sql );
-        }
+            $to = get_option( 'bush_notify_emails', get_option( 'admin_email' ) );
+            $subject = "Нова резервация #{$booking_id}";
+            $message = "Име: {$client['firstName']} {$client['lastName']}\n"
+                     . "Имейл: {$client['email']}\nТелефон: {$client['phone']}\n"
+                     . "Сектор: {$sector}\nОт: {$start}\nДо: {$end}\n"
+                     . "Рибари: {$anglers}\n\nБележки: " . ( $params['notes'] ?? '' );
 
-        /** Лист на резервации */
-        public static function list_bookings( $limit = 50 ) {
-            global $wpdb;
-            return $wpdb->get_results(
-                $wpdb->prepare(
-                    "SELECT * FROM {$wpdb->prefix}bush_bookings ORDER BY created_at DESC LIMIT %d",
-                    $limit
-                )
-            );
-        }
+            wp_mail( $to, $subject, $message );
 
-        /** Взимане на цени */
-        public static function get_prices() {
-            global $wpdb;
-            $sql = "SELECT * FROM {$wpdb->prefix}bush_prices ORDER BY valid_from DESC LIMIT 1";
-            return $wpdb->get_row( $sql );
+            return [ 'ok' => true, 'bookingId' => $booking_id ];
         }
 
         /** Blackouts */
-        public static function list_blackouts() {
-            global $wpdb;
-            return $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}bush_blackouts ORDER BY start DESC" );
+        public static function get_blackouts( $request ) {
+            return Bushlyak_Booking_DB::list_blackouts();
         }
 
         /** Методи за плащане */
-        public static function list_paymethods() {
-            global $wpdb;
-            return $wpdb->get_results( "SELECT * FROM {$wpdb->prefix}bush_paymethods ORDER BY id ASC" );
+        public static function get_paymethods( $request ) {
+            return Bushlyak_Booking_DB::list_paymethods();
         }
     }
 
